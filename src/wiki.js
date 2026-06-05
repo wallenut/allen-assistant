@@ -23,6 +23,11 @@ async function fetchFile(path) {
 export async function loadWikiContext() {
   const sections = await Promise.allSettled(WIKI_FILES.map(fetchFile))
 
+  sections.forEach((result, i) => {
+    if (result.status === 'rejected') console.warn(`Wiki load failed [${WIKI_FILES[i]}]:`, result.reason)
+    else console.log(`Wiki loaded: ${WIKI_FILES[i]}`)
+  })
+
   const body = sections
     .map((result, i) => {
       if (result.status === 'rejected') return null
