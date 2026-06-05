@@ -18,9 +18,9 @@ app.get('/api/ping', (_, res) => res.json({ ok: true }))
 
 // ── Wiki proxy ────────────────────────────────────────────────────────────────
 
-app.get('/api/wiki/*', async (req, res) => {
+app.use('/api/wiki', async (req, res) => {
   try {
-    const path = req.params[0]
+    const path = req.path.replace(/^\//, '')
     const url = `https://raw.githubusercontent.com/${owner}/${repo}/main/${path}`
     const r = await fetch(url, { headers: { Authorization: `token ${GITHUB_TOKEN}` } })
     if (!r.ok) return res.status(r.status).end()
@@ -35,7 +35,8 @@ app.get('/api/wiki/*', async (req, res) => {
 
 app.get('/api/buffer/*', async (req, res) => {
   try {
-    const url = `https://api.github.com/repos/${owner}/${repo}/contents/${req.params[0]}`
+    const path = req.path.replace(/^\//, '')
+    const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`
     const r = await fetch(url, { headers: { Authorization: `token ${GITHUB_TOKEN}` } })
     if (!r.ok) return res.status(r.status).end()
     res.json(await r.json())
