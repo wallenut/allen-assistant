@@ -14,8 +14,6 @@ const [owner, repo] = WIKI_REPO.split('/')
 const app = express()
 app.use(express.json())
 
-app.get('/api/ping', (_, res) => res.json({ ok: true }))
-
 // ── Wiki proxy ────────────────────────────────────────────────────────────────
 
 app.use('/api/wiki', async (req, res) => {
@@ -23,10 +21,7 @@ app.use('/api/wiki', async (req, res) => {
     const path = req.path.replace(/^\//, '')
     const url = `https://raw.githubusercontent.com/${owner}/${repo}/main/${path}`
     const r = await fetch(url, { headers: { Authorization: `token ${GITHUB_TOKEN}` } })
-    if (!r.ok) {
-      console.error(`GitHub fetch failed: ${r.status} ${url} token=${GITHUB_TOKEN ? GITHUB_TOKEN.slice(0,8) + '...' : 'MISSING'}`)
-      return res.status(r.status).end()
-    }
+    if (!r.ok) return res.status(r.status).end()
     const text = await r.text()
     res.type('text/plain').send(text)
   } catch (err) {
@@ -35,21 +30,23 @@ app.use('/api/wiki', async (req, res) => {
   }
 })
 
-// ── Buffer read ───────────────────────────────────────────────────────────────
+// ── Buffer read / write ───────────────────────────────────────────────────────
 
-app.get('/api/buffer/*', async (req, res) => {
-  try {
-    const path = req.path.replace(/^\//, '')
-    const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`
-    const r = await fetch(url, { headers: { Authorization: `token ${GITHUB_TOKEN}` } })
-    if (!r.ok) return res.status(r.status).end()
-    res.json(await r.json())
-  } catch (err) {
-    res.status(500).json({ error: err.message })
+app.use('/api/buffer', async (req, res, next) => {
+  if (req.method === 'GET') {
+    try {
+      const path = req.path.replace(/^\//, '')
+      const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`
+      const r = await fetch(url, { headers: { Authorization: `token ${GITHUB_TOKEN}` } })
+      if (!r.ok) return res.status(r.status).end()
+      res.json(await r.json())
+    } catch (err) {
+      res.status(500).json({ error: err.message })
+    }
+  } else {
+    next()
   }
 })
-
-// ── Buffer write ──────────────────────────────────────────────────────────────
 
 app.post('/api/buffer', async (req, res) => {
   try {
@@ -61,6 +58,63 @@ app.post('/api/buffer', async (req, res) => {
       body: JSON.stringify({ message, content, ...(sha ? { sha } : {}) }),
     })
     res.status(r.status).json(await r.json())
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// ── Wiki write ────────────────────────────────────────────────────────────────
+
+app.post('/api/wiki-write', async (req, res) => {
+  try {
+    const { path, content } = req.body
+    const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`
+    let sha
+    try {
+      const r = await fetch(url, { headers: { Authorization: `token ${GITHUB_TOKEN}` } })
+      if (r.ok) { const d = await r.json(); sha = d.sha }
+    } catch {}
+    const r = await fetch(url, {
+      method: 'PUT',
+      headers: { Authorization: `token ${GITHUB_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: `wallenut: update ${path}`, content: btoa(unescape(encodeURIComponent(content))), ...(sha ? { sha } : {}) }),
+    })
+    res.status(r.status).json(await r.json())
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// ── Buffer move (to reviewed/) ────────────────────────────────────────────────
+
+app.post('/api/buffer-move', async (req, res) => {
+  try {
+    const { date } = req.body
+    const srcPath = `buffer/${date}.md`
+    const dstPath = `buffer/reviewed/${date}.md`
+
+    // Read source
+    const srcUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${srcPath}`
+    const srcRes = await fetch(srcUrl, { headers: { Authorization: `token ${GITHUB_TOKEN}` } })
+    if (!srcRes.ok) return res.status(srcRes.status).end()
+    const src = await srcRes.json()
+
+    // Create destination
+    const dstUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${dstPath}`
+    await fetch(dstUrl, {
+      method: 'PUT',
+      headers: { Authorization: `token ${GITHUB_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: `buffer: reviewed ${date}`, content: src.content.replace(/\n/g, '') }),
+    })
+
+    // Delete source
+    await fetch(srcUrl, {
+      method: 'DELETE',
+      headers: { Authorization: `token ${GITHUB_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: `buffer: archive ${date}`, sha: src.sha }),
+    })
+
+    res.json({ ok: true })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }

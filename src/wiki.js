@@ -20,7 +20,6 @@ export async function loadWikiContext() {
 
   sections.forEach((result, i) => {
     if (result.status === 'rejected') console.warn(`Wiki load failed [${WIKI_FILES[i]}]:`, result.reason)
-    else console.log(`Wiki loaded: ${WIKI_FILES[i]} — first 100 chars:`, result.value.slice(0, 100))
   })
 
   const body = sections

@@ -4,6 +4,7 @@ import './App.css'
 import { sendMessage } from './gemini.js'
 import { loadWikiContext } from './wiki.js'
 import { writeBuffer } from './buffer.js'
+import ReviewPanel from './ReviewPanel.jsx'
 
 const GREETING = { id: 0, role: 'assistant', text: "Hey Allen. What's on your mind?", time: '' }
 
@@ -125,6 +126,7 @@ function Chat() {
   const [sessions, setSessions] = useState(loadSessions)
   const [activeId, setActiveId] = useState(() => loadActiveId(sessions))
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [reviewOpen, setReviewOpen] = useState(false)
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -355,6 +357,7 @@ function Chat() {
 
   return (
     <div className="app">
+      {reviewOpen && <ReviewPanel onClose={() => setReviewOpen(false)} />}
       {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
 
       <aside className={`sidebar${sidebarOpen ? ' open' : ''}`}>
@@ -378,7 +381,11 @@ function Chat() {
 
         {archivedSessions.length > 0 && (
           <>
-            <div className="sidebar-section-label">Archived</div>
+            <button className="review-buffer-btn" onClick={() => { setSidebarOpen(false); setReviewOpen(true) }}>
+          Review buffer
+        </button>
+
+        <div className="sidebar-section-label">Archived</div>
             <div className="session-list">
               {archivedSessions.map(s => (
                 <div key={s.id} className={`session-item archived${s.id === activeId ? ' active' : ''}`}>
