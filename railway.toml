@@ -1,7 +1,7 @@
 [build]
-buildCommand = "npm run build"
+buildCommand = "npm install && npm run build"
 
 [deploy]
-startCommand = "npx serve -s dist -l ${PORT:-3000}"
+startCommand = "NODE_ENV=production node server.js"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10

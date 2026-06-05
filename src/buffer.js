@@ -1,8 +1,3 @@
-import { Octokit } from '@octokit/rest'
-
-const octokit = new Octokit({ auth: import.meta.env.VITE_GITHUB_TOKEN })
-const [owner, repo] = import.meta.env.VITE_GITHUB_WIKI_REPO.split('/')
-
 export async function writeBuffer(summary, title) {
   const today = new Date().toISOString().split('T')[0]
   const path = `buffer/${today}.md`
@@ -12,17 +7,19 @@ export async function writeBuffer(summary, title) {
 
   let sha, existing = ''
   try {
-    const { data } = await octokit.repos.getContent({ owner, repo, path })
-    sha = data.sha
-    existing = atob(data.content.replace(/\n/g, ''))
-  } catch (e) {
-    if (e.status !== 404) throw e
-  }
+    const r = await fetch(`/api/buffer/${path}`)
+    if (r.ok) {
+      const data = await r.json()
+      sha = data.sha
+      existing = atob(data.content.replace(/\n/g, ''))
+    }
+  } catch {}
 
-  await octokit.repos.createOrUpdateFileContents({
-    owner, repo, path,
-    message: `buffer: ${today}`,
-    content: btoa(unescape(encodeURIComponent(existing + line))),
-    ...(sha ? { sha } : {}),
+  const content = btoa(unescape(encodeURIComponent(existing + line)))
+  const res = await fetch('/api/buffer', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path, content, sha, message: `buffer: ${today}` }),
   })
+  if (!res.ok) throw new Error('Buffer write failed')
 }

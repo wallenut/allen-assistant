@@ -1,5 +1,3 @@
-const [owner, repo] = import.meta.env.VITE_GITHUB_WIKI_REPO.split('/')
-
 const WIKI_FILES = [
   'allen_synthesis.md',
   'research/current_state.md',
@@ -12,10 +10,7 @@ const FALLBACK_PROMPT = `You are Wallenut, Allen Wang's personal AI assistant an
 Be concise, direct, and helpful.`
 
 async function fetchFile(path) {
-  const url = `https://raw.githubusercontent.com/${owner}/${repo}/main/${path}`
-  const res = await fetch(url, {
-    headers: { Authorization: `token ${import.meta.env.VITE_GITHUB_TOKEN}` }
-  })
+  const res = await fetch(`/api/wiki/${path}`)
   if (!res.ok) throw new Error(`${res.status} ${path}`)
   return res.text()
 }
@@ -25,7 +20,7 @@ export async function loadWikiContext() {
 
   sections.forEach((result, i) => {
     if (result.status === 'rejected') console.warn(`Wiki load failed [${WIKI_FILES[i]}]:`, result.reason)
-    else console.log(`Wiki loaded: ${WIKI_FILES[i]}`)
+    else console.log(`Wiki loaded: ${WIKI_FILES[i]} — first 100 chars:`, result.value.slice(0, 100))
   })
 
   const body = sections
