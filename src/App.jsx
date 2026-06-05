@@ -117,9 +117,11 @@ function stripMarkdown(text) {
 
 export default function App() {
   const [authed, setAuthed] = useState(isAuthed)
-
   if (!authed) return <Gate onUnlock={() => setAuthed(true)} />
+  return <Chat />
+}
 
+function Chat() {
   const [sessions, setSessions] = useState(loadSessions)
   const [activeId, setActiveId] = useState(() => loadActiveId(sessions))
   const [sidebarOpen, setSidebarOpen] = useState(false)
