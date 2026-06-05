@@ -1,7 +1,3 @@
-import { Octokit } from '@octokit/rest'
-
-const octokit = new Octokit({ auth: import.meta.env.VITE_GITHUB_TOKEN })
-
 const [owner, repo] = import.meta.env.VITE_GITHUB_WIKI_REPO.split('/')
 
 const WIKI_FILES = [
@@ -16,8 +12,12 @@ const FALLBACK_PROMPT = `You are Wallenut, Allen Wang's personal AI assistant an
 Be concise, direct, and helpful.`
 
 async function fetchFile(path) {
-  const { data } = await octokit.repos.getContent({ owner, repo, path })
-  return atob(data.content.replace(/\n/g, ''))
+  const url = `https://raw.githubusercontent.com/${owner}/${repo}/main/${path}`
+  const res = await fetch(url, {
+    headers: { Authorization: `token ${import.meta.env.VITE_GITHUB_TOKEN}` }
+  })
+  if (!res.ok) throw new Error(`${res.status} ${path}`)
+  return res.text()
 }
 
 export async function loadWikiContext() {
