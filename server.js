@@ -23,10 +23,14 @@ app.use('/api/wiki', async (req, res) => {
     const path = req.path.replace(/^\//, '')
     const url = `https://raw.githubusercontent.com/${owner}/${repo}/main/${path}`
     const r = await fetch(url, { headers: { Authorization: `token ${GITHUB_TOKEN}` } })
-    if (!r.ok) return res.status(r.status).end()
+    if (!r.ok) {
+      console.error(`GitHub fetch failed: ${r.status} ${url} token=${GITHUB_TOKEN ? GITHUB_TOKEN.slice(0,8) + '...' : 'MISSING'}`)
+      return res.status(r.status).end()
+    }
     const text = await r.text()
     res.type('text/plain').send(text)
   } catch (err) {
+    console.error('Wiki proxy error:', err.message)
     res.status(500).json({ error: err.message })
   }
 })
