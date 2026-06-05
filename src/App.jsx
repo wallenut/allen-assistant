@@ -7,6 +7,44 @@ import { writeBuffer } from './buffer.js'
 
 const GREETING = { id: 0, role: 'assistant', text: "Hey Allen. What's on your mind?", time: '' }
 
+const AUTH_KEY = 'wallenut_auth'
+
+function isAuthed() {
+  return localStorage.getItem(AUTH_KEY) === 'true'
+}
+
+function Gate({ onUnlock }) {
+  const [value, setValue] = useState('')
+  const [error, setError] = useState(false)
+
+  function attempt() {
+    if (value === import.meta.env.VITE_APP_PASSWORD) {
+      localStorage.setItem(AUTH_KEY, 'true')
+      onUnlock()
+    } else {
+      setError(true)
+      setValue('')
+    }
+  }
+
+  return (
+    <div className="gate">
+      <span className="wordmark" style={{ marginBottom: 24 }}>Wallenut</span>
+      <input
+        className="gate-input"
+        type="password"
+        placeholder="Password"
+        value={value}
+        autoFocus
+        onChange={e => { setValue(e.target.value); setError(false) }}
+        onKeyDown={e => e.key === 'Enter' && attempt()}
+      />
+      {error && <span className="gate-error">Wrong password</span>}
+      <button className="gate-btn" onClick={attempt}>Unlock</button>
+    </div>
+  )
+}
+
 // ── Session storage ──────────────────────────────────────────────────────────
 
 const SESSIONS_KEY = 'wallenut_sessions'
@@ -78,6 +116,10 @@ function stripMarkdown(text) {
 // ── Component ────────────────────────────────────────────────────────────────
 
 export default function App() {
+  const [authed, setAuthed] = useState(isAuthed)
+
+  if (!authed) return <Gate onUnlock={() => setAuthed(true)} />
+
   const [sessions, setSessions] = useState(loadSessions)
   const [activeId, setActiveId] = useState(() => loadActiveId(sessions))
   const [sidebarOpen, setSidebarOpen] = useState(false)
