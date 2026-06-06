@@ -4,7 +4,7 @@ const WIKI_FILES = [
   'fitness/current_state.md',
   'life/current_state.md',
   'ops/tasks.md',
-  'projects/emerGPT.md',
+  'projects/emerGPT/overview.md',
 ]
 
 const FALLBACK_PROMPT = `You are Wallenut, Allen Wang's personal AI assistant and second brain.
