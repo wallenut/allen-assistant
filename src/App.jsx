@@ -3,7 +3,7 @@ import Markdown from 'react-markdown'
 import './App.css'
 import { sendMessage } from './gemini.js'
 import { loadWikiContext } from './wiki.js'
-import { writeBuffer } from './buffer.js'
+import { writeBuffer, extractFacts, writeEpisodicBuffer } from './buffer.js'
 import ReviewPanel from './ReviewPanel.jsx'
 
 const GREETING = { id: 0, role: 'assistant', text: "Hey Allen. What's on your mind?", time: '' }
@@ -142,6 +142,9 @@ function Chat() {
   const voiceInputRef = useRef(false)
   const bottomRef = useRef(null)
   const textareaRef = useRef(null)
+  const capturedRef = useRef(false)
+
+  const [captureStatus, setCaptureStatus] = useState(null)
 
   const activeSession = sessions.find(s => s.id === activeId) || sessions[0]
   const messages = activeSession.messages
@@ -150,11 +153,29 @@ function Chat() {
     loadWikiContext().then(p => { systemPromptRef.current = p })
     window.speechSynthesis.getVoices()
     window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices()
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === 'hidden') {
+        const session = sessionsRef.current.find(s => s.id === activeIdRef.current)
+        const realMessages = (session?.messages || []).filter(m => m.id !== 0)
+        if (realMessages.length >= 2 && !capturedRef.current) {
+          capturedRef.current = true
+          extractFacts(realMessages).then(facts => writeEpisodicBuffer(facts)).catch(() => {})
+        }
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
   }, [])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
+
+  useEffect(() => {
+    capturedRef.current = false
+    setCaptureStatus(null)
+  }, [activeId])
 
   function updateSessions(updated) {
     sessionsRef.current = updated
@@ -210,6 +231,24 @@ function Chat() {
       console.error('Save failed:', err)
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function captureSession() {
+    const session = sessionsRef.current.find(s => s.id === activeIdRef.current)
+    const realMessages = (session?.messages || []).filter(m => m.id !== 0)
+    if (realMessages.length < 2 || capturedRef.current) return
+    capturedRef.current = true
+    setCaptureStatus('capturing')
+    try {
+      const facts = await extractFacts(realMessages)
+      await writeEpisodicBuffer(facts)
+      setCaptureStatus(facts.length)
+      setTimeout(() => setCaptureStatus(null), 3000)
+    } catch (err) {
+      console.error('captureSession failed:', err)
+      capturedRef.current = false
+      setCaptureStatus(null)
     }
   }
 
@@ -419,9 +458,23 @@ function Chat() {
           </button>
           <span className="wordmark">Wallenut</span>
           {messages.filter(m => m.id !== 0).length > 0 && (
-            <button className="save-btn" onClick={saveChat} disabled={saving}>
-              {saving ? 'Saving…' : 'Save'}
-            </button>
+            <>
+              <button className="save-btn" onClick={saveChat} disabled={saving}>
+                {saving ? 'Saving…' : 'Save'}
+              </button>
+              <button
+                className="capture-btn"
+                onClick={captureSession}
+                disabled={captureStatus === 'capturing'}
+                title="Extract and capture facts from this session"
+              >
+                {captureStatus === 'capturing'
+                  ? 'Capturing…'
+                  : typeof captureStatus === 'number'
+                  ? `Captured ${captureStatus} facts`
+                  : 'Capture'}
+              </button>
+            </>
           )}
         </header>
 

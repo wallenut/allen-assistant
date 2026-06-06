@@ -506,6 +506,28 @@ body {
   cursor: default;
 }
 
+.capture-btn {
+  background: none;
+  border: 1px solid #3a4a3a;
+  border-radius: 8px;
+  color: #7a9a7a;
+  font-size: 12px;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+
+.capture-btn:hover {
+  border-color: #5a9a5a;
+  color: #5a9a5a;
+}
+
+.capture-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 /* ── Messages ────────────────────────────────────────────────────────── */
 
 .messages {

@@ -42,6 +42,15 @@ Show result after each step. Wait for approval before next step.
 - Wiki files: allen_synthesis.md, research/current_state.md, 
   fitness/current_state.md, life/current_state.md
 
+## Testing requirement
+Before marking any feature complete:
+- Run the dev server (`npm run dev` + `node server.js`)
+- Manually verify the new feature works end-to-end
+- Confirm no existing features are broken (chat, voice, wiki load, save, review panel)
+- Report exactly what was tested and what was observed
+
+Never declare a feature done without running the app.
+
 ## On errors
 - If GitHub wiki fails to load, use fallback system prompt and continue
 - Do not block the UI on API failures
