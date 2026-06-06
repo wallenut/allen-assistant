@@ -1,9 +1,16 @@
 # Allen Assistant — CLAUDE.md
 
 ## What this is
-A minimal personal AI assistant web app (React/Vite) that loads Allen's 
-wiki from GitHub as context, supports voice in/out, and calls Gemini API.
-See spec in README.md for full requirements.
+Wallenut — a minimal personal AI assistant web app (React/Vite) for Allen:
+loads the **allen-wiki** GitHub repo as its knowledge base, supports voice
+in/out, calls the Gemini API.
+
+Doubles as a sandbox — the memory and agentic patterns proven here feed
+EmerGPT (Sam's agentic OS for medical practices; Allen's consulting track).
+Current direction and active decisions live in the wiki, not here: read
+`projects/emerGPT/current_state.md` first. Keep this file to durable
+rules/conventions; volatile state belongs in the wiki. The build order below
+is the original scaffold spec (complete).
 
 ## Four rules (Karpathy)
 
