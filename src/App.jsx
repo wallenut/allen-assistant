@@ -3,7 +3,7 @@ import Markdown from 'react-markdown'
 import './App.css'
 import { sendMessage } from './gemini.js'
 import { loadWikiContext } from './wiki.js'
-import { writeBuffer, extractFacts, writeEpisodicBuffer } from './buffer.js'
+import { extractFacts, writeEpisodicBuffer } from './buffer.js'
 import ReviewPanel from './ReviewPanel.jsx'
 
 const GREETING = { id: 0, role: 'assistant', text: "Hey Allen. What's on your mind?", time: '' }
@@ -129,8 +129,6 @@ function Chat() {
   const [reviewOpen, setReviewOpen] = useState(false)
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [resavingId, setResavingId] = useState(null)
   const [listening, setListening] = useState(false)
   const [speaking, setSpeaking] = useState(false)
 
@@ -206,34 +204,6 @@ function Chat() {
     switchSession(s.id)
   }
 
-  async function saveChat() {
-    if (saving) return
-    setSaving(true)
-    try {
-      const session = sessionsRef.current.find(s => s.id === activeIdRef.current)
-      const excerpt = session.messages
-        .filter(m => m.id !== 0)
-        .map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.text}`)
-        .join('\n')
-
-      const summary = await sendMessage([], excerpt,
-        'Summarize this conversation in 2-3 sentences capturing the key topics, decisions, and emotional context. Be specific — name actual things discussed. Reply with ONLY the summary.'
-      )
-
-      await writeBuffer(summary.trim(), session.name)
-
-      const updated = sessionsRef.current.map(s =>
-        s.id === activeIdRef.current ? { ...s, archived: true } : s
-      )
-      updateSessions(updated)
-      createSession()
-    } catch (err) {
-      console.error('Save failed:', err)
-    } finally {
-      setSaving(false)
-    }
-  }
-
   async function captureSession() {
     const session = sessionsRef.current.find(s => s.id === activeIdRef.current)
     const realMessages = (session?.messages || []).filter(m => m.id !== 0)
@@ -249,25 +219,6 @@ function Chat() {
       console.error('captureSession failed:', err)
       capturedRef.current = false
       setCaptureStatus(null)
-    }
-  }
-
-  async function resaveSession(session) {
-    if (resavingId) return
-    setResavingId(session.id)
-    try {
-      const excerpt = session.messages
-        .filter(m => m.id !== 0)
-        .map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.text}`)
-        .join('\n')
-      const summary = await sendMessage([], excerpt,
-        'Summarize this conversation in 2-3 sentences capturing the key topics, decisions, and emotional context. Be specific — name actual things discussed. Reply with ONLY the summary.'
-      )
-      await writeBuffer(summary.trim(), session.name)
-    } catch (err) {
-      console.error('Resave failed:', err)
-    } finally {
-      setResavingId(null)
     }
   }
 
@@ -432,14 +383,6 @@ function Chat() {
                     <span className="session-name">{s.name || 'Untitled'}</span>
                     <span className="session-date">{new Date(s.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}</span>
                   </button>
-                  <button
-                    className="resave-btn"
-                    onClick={() => resaveSession(s)}
-                    disabled={resavingId === s.id}
-                    title="Re-save to buffer"
-                  >
-                    {resavingId === s.id ? '…' : '↑'}
-                  </button>
                 </div>
               ))}
             </div>
@@ -457,25 +400,25 @@ function Chat() {
             </svg>
           </button>
           <span className="wordmark">Wallenut</span>
-          {messages.filter(m => m.id !== 0).length > 0 && (
-            <>
-              <button className="save-btn" onClick={saveChat} disabled={saving}>
-                {saving ? 'Saving…' : 'Save'}
+          <>
+              <button className="new-chat-btn" onClick={createSession}>
+                New Chat
               </button>
-              <button
-                className="capture-btn"
-                onClick={captureSession}
-                disabled={captureStatus === 'capturing'}
-                title="Extract and capture facts from this session"
-              >
-                {captureStatus === 'capturing'
-                  ? 'Capturing…'
-                  : typeof captureStatus === 'number'
-                  ? `Captured ${captureStatus} facts`
-                  : 'Capture'}
-              </button>
+              {messages.filter(m => m.id !== 0).length > 0 && (
+                <button
+                  className="capture-btn"
+                  onClick={captureSession}
+                  disabled={captureStatus === 'capturing'}
+                  title="Extract and capture facts from this session"
+                >
+                  {captureStatus === 'capturing'
+                    ? 'Capturing…'
+                    : typeof captureStatus === 'number'
+                    ? `Captured ${captureStatus} facts`
+                    : 'Capture'}
+                </button>
+              )}
             </>
-          )}
         </header>
 
         <div className="messages">

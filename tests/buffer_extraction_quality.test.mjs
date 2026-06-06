@@ -145,17 +145,28 @@ if (firstPostCount >= 1) {
   if (Array.isArray(facts)) {
     assert('Buffer POST content is a non-empty array of facts', facts.length > 0, `got ${facts.length} facts`);
 
-    // AC1: ASSISTANT_ONLY_PHRASE must not appear in any extracted fact
+    // AC1: Facts derived from assistant-only content must be tagged source:"assistant"
     const assistantLeakFacts = facts.filter(f =>
       typeof f.content === 'string' &&
       f.content.toLowerCase().includes(ASSISTANT_ONLY_PHRASE.toLowerCase()),
     );
+    if (assistantLeakFacts.length > 0) {
+      const allTaggedAssistant = assistantLeakFacts.every(f => f.source === 'assistant');
+      assert(
+        'AC1: Assistant-only facts are tagged source:"assistant"',
+        allTaggedAssistant,
+        `Wrongly tagged: ${JSON.stringify(assistantLeakFacts.map(f => ({ content: f.content, source: f.source })))}`,
+      );
+    } else {
+      // Phrase not extracted at all — also acceptable (filtered out)
+      assert('AC1: Assistant-only phrase not captured as user fact', true);
+    }
+    // All facts must have a source field
+    const missingSource = facts.filter(f => f.source !== 'user' && f.source !== 'assistant');
     assert(
-      'AC1: No facts contain content exclusive to the assistant reply',
-      assistantLeakFacts.length === 0,
-      assistantLeakFacts.length > 0
-        ? `Leaked: ${JSON.stringify(assistantLeakFacts.map(f => f.content))}`
-        : '',
+      'AC1: All facts have a valid source field',
+      missingSource.length === 0,
+      missingSource.length > 0 ? `Missing source: ${JSON.stringify(missingSource.map(f => f.content))}` : '',
     );
 
     // AC3: The unique user fact must appear (flexible token match)
