@@ -528,6 +528,16 @@ body {
   cursor: default;
 }
 
+.capture-btn-error {
+  border-color: #9a4a4a;
+  color: #d08a8a;
+}
+
+.capture-btn-error:hover {
+  border-color: #c05a5a;
+  color: #e0a0a0;
+}
+
 /* ── Messages ────────────────────────────────────────────────────────── */
 
 .messages {

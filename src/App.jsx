@@ -141,6 +141,7 @@ function Chat() {
   const bottomRef = useRef(null)
   const textareaRef = useRef(null)
   const capturedRef = useRef(false)
+  const captureInFlightRef = useRef(false)
 
   const [captureStatus, setCaptureStatus] = useState(null)
 
@@ -153,14 +154,7 @@ function Chat() {
     window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices()
 
     function handleVisibilityChange() {
-      if (document.visibilityState === 'hidden') {
-        const session = sessionsRef.current.find(s => s.id === activeIdRef.current)
-        const realMessages = (session?.messages || []).filter(m => m.id !== 0)
-        if (realMessages.length >= 2 && !capturedRef.current) {
-          capturedRef.current = true
-          extractFacts(realMessages).then(facts => writeEpisodicBuffer(facts)).catch(() => {})
-        }
-      }
+      if (document.visibilityState === 'hidden') captureSession()
     }
     document.addEventListener('visibilitychange', handleVisibilityChange)
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
@@ -172,6 +166,7 @@ function Chat() {
 
   useEffect(() => {
     capturedRef.current = false
+    captureInFlightRef.current = false
     setCaptureStatus(null)
   }, [activeId])
 
@@ -205,20 +200,24 @@ function Chat() {
   }
 
   async function captureSession() {
+    // Already captured this session, or a capture is mid-flight — don't double-write.
+    if (capturedRef.current || captureInFlightRef.current) return
     const session = sessionsRef.current.find(s => s.id === activeIdRef.current)
     const realMessages = (session?.messages || []).filter(m => m.id !== 0)
-    if (realMessages.length < 2 || capturedRef.current) return
-    capturedRef.current = true
+    if (realMessages.length < 2) return
+    captureInFlightRef.current = true
     setCaptureStatus('capturing')
     try {
       const facts = await extractFacts(realMessages)
       await writeEpisodicBuffer(facts)
+      capturedRef.current = true // latch only on success, so failures stay retryable
       setCaptureStatus(facts.length)
       setTimeout(() => setCaptureStatus(null), 3000)
     } catch (err) {
       console.error('captureSession failed:', err)
-      capturedRef.current = false
-      setCaptureStatus(null)
+      setCaptureStatus('error') // surface the failure instead of swallowing it
+    } finally {
+      captureInFlightRef.current = false
     }
   }
 
@@ -406,13 +405,17 @@ function Chat() {
               </button>
               {messages.filter(m => m.id !== 0).length > 0 && (
                 <button
-                  className="capture-btn"
+                  className={`capture-btn${captureStatus === 'error' ? ' capture-btn-error' : ''}`}
                   onClick={captureSession}
                   disabled={captureStatus === 'capturing'}
-                  title="Extract and capture facts from this session"
+                  title={captureStatus === 'error'
+                    ? 'Capture failed to save — click to retry'
+                    : 'Extract and capture facts from this session'}
                 >
                   {captureStatus === 'capturing'
                     ? 'Capturing…'
+                    : captureStatus === 'error'
+                    ? 'Capture failed — retry'
                     : typeof captureStatus === 'number'
                     ? `Captured ${captureStatus} facts`
                     : 'Capture'}
