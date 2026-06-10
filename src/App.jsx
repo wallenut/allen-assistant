@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import Markdown from 'react-markdown'
 import './App.css'
 import { sendMessage } from './gemini.js'
-import { loadWikiContext } from './wiki.js'
+import { initWikiContext } from './wiki.js'
 import { extractFacts, writeEpisodicBuffer } from './buffer.js'
 import ReviewPanel from './ReviewPanel.jsx'
 
@@ -132,7 +132,7 @@ function Chat() {
   const [listening, setListening] = useState(false)
   const [speaking, setSpeaking] = useState(false)
 
-  const systemPromptRef = useRef(null)
+  const buildPromptRef = useRef(null)
   const sessionsRef = useRef(sessions)
   const activeIdRef = useRef(activeId)
   const recognitionRef = useRef(null)
@@ -149,7 +149,7 @@ function Chat() {
   const messages = activeSession.messages
 
   useEffect(() => {
-    loadWikiContext().then(p => { systemPromptRef.current = p })
+    initWikiContext().then(fn => { buildPromptRef.current = fn })
     window.speechSynthesis.getVoices()
     window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices()
 
@@ -267,7 +267,8 @@ function Chat() {
     try {
       const currentMessages = sessionsRef.current.find(s => s.id === activeIdRef.current)?.messages || []
       const history = currentMessages.filter(m => m.id !== 0 && m.id !== userMsg.id)
-      const responseText = await sendMessage(history, text, systemPromptRef.current)
+      const systemPrompt = buildPromptRef.current ? buildPromptRef.current(text) : null
+      const responseText = await sendMessage(history, text, systemPrompt)
       const replyTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       appendMessage({ id: Date.now() + 1, role: 'assistant', text: responseText, time: replyTime })
       if (voiceInputRef.current) speak(responseText)
