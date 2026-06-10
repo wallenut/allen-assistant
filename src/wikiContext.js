@@ -31,6 +31,18 @@ export function discoverDoors(paths) {
   return [...new Set(doors)]
 }
 
+// Map each loadable domain to its door path, excluding the always-present synthesis.
+// This is the lookup behind the read_wiki tool (and the source of its argument enum):
+// the model names a domain, this resolves it to the door content to return.
+export function domainPaths(doors) {
+  const map = {}
+  for (const d of doors) {
+    const key = domainOf(d)
+    if (key !== 'synthesis') map[key] = d
+  }
+  return map
+}
+
 // Query -> matched domain keys. Name-token match (open-world) OR alias match.
 export function classifyDomains(query, doors) {
   const q = query.toLowerCase()

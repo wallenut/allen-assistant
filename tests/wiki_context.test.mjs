@@ -8,7 +8,7 @@
 // 6. Selection is always a subset of available doors, with no duplicates
 // 7. Open-world: a brand-new projects/<x>/current_state.md routes by its name token with zero config
 
-import { discoverDoors, domainOf, selectContext, SYNTHESIS } from '../src/wikiContext.js';
+import { discoverDoors, domainOf, selectContext, domainPaths, SYNTHESIS } from '../src/wikiContext.js';
 
 let passed = 0;
 let failed = 0;
@@ -85,6 +85,18 @@ const grownDoors = discoverDoors(grownTree);
 assert('new domain is discovered by the glob', grownDoors.includes('projects/jarvis/current_state.md'));
 const jarvis = selectContext('what is left on the jarvis roadmap?', grownDoors);
 assert('new domain routes by name token, no alias needed', jarvis.includes('projects/jarvis/current_state.md'), jarvis.join(', '));
+
+// AC8: domainPaths backs the read_wiki tool — maps each loadable domain to its door,
+//      excludes synthesis (always present, not a fetchable "domain"), and is the enum
+//      of valid tool arguments. Resolution is case-insensitive on the domain name.
+const dp = domainPaths(doors);
+assert('domainPaths maps domain -> door path', dp.fitness === 'fitness/current_state.md');
+assert('domainPaths resolves nested project domain', dp.emergpt === 'projects/emerGPT/current_state.md');
+assert('domainPaths excludes synthesis (not a fetchable domain)', !('synthesis' in dp));
+assert('domainPaths keys cover every non-synthesis door', sameSet(
+  Object.keys(dp),
+  doors.filter(d => d !== SYNTHESIS).map(domainOf)
+), Object.keys(dp).join(', '));
 
 console.log(`\n── Results: ${passed} passed, ${failed} failed ──────────────\n`);
 process.exit(failed > 0 ? 1 : 0);

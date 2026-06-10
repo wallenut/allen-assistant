@@ -132,7 +132,7 @@ function Chat() {
   const [listening, setListening] = useState(false)
   const [speaking, setSpeaking] = useState(false)
 
-  const buildPromptRef = useRef(null)
+  const wikiRef = useRef(null)
   const sessionsRef = useRef(sessions)
   const activeIdRef = useRef(activeId)
   const recognitionRef = useRef(null)
@@ -149,7 +149,7 @@ function Chat() {
   const messages = activeSession.messages
 
   useEffect(() => {
-    initWikiContext().then(fn => { buildPromptRef.current = fn })
+    initWikiContext().then(ctx => { wikiRef.current = ctx })
     window.speechSynthesis.getVoices()
     window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices()
 
@@ -267,8 +267,9 @@ function Chat() {
     try {
       const currentMessages = sessionsRef.current.find(s => s.id === activeIdRef.current)?.messages || []
       const history = currentMessages.filter(m => m.id !== 0 && m.id !== userMsg.id)
-      const systemPrompt = buildPromptRef.current ? buildPromptRef.current(text) : null
-      const responseText = await sendMessage(history, text, systemPrompt)
+      const wiki = wikiRef.current
+      const systemPrompt = wiki ? wiki.buildPrompt(text) : null
+      const responseText = await sendMessage(history, text, systemPrompt, wiki)
       const replyTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       appendMessage({ id: Date.now() + 1, role: 'assistant', text: responseText, time: replyTime })
       if (voiceInputRef.current) speak(responseText)

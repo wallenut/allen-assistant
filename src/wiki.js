@@ -1,4 +1,4 @@
-import { discoverDoors, selectContext } from './wikiContext.js'
+import { discoverDoors, selectContext, domainPaths } from './wikiContext.js'
 
 const FALLBACK_PROMPT = `You are Wallenut, Allen Wang's personal AI assistant and second brain.
 Be concise, direct, and helpful.`
@@ -18,17 +18,20 @@ async function fetchTree() {
   return res.json()
 }
 
-// Discover the front doors, fetch their contents once, and return a per-query
-// builder that loads only the door(s) the query is about (always + synthesis).
-// On any failure it returns a builder that yields the fallback prompt — the UI
-// must never block on the wiki.
+const FALLBACK_CONTEXT = { buildPrompt: () => FALLBACK_PROMPT, readDomain: () => null, domains: [] }
+
+// Discover the front doors and fetch their contents once. Returns a context with:
+//   buildPrompt(query) — the router: loads only the door(s) the query is about
+//   domains            — domain names the model may pull via the read_wiki tool
+//   readDomain(name)   — resolves a domain to its cached note (depth on demand)
+// On any failure it returns a fallback context — the UI must never block on the wiki.
 export async function initWikiContext() {
   let doors
   try {
     doors = discoverDoors(await fetchTree())
   } catch (err) {
     console.warn('Wiki tree load failed:', err.message)
-    return () => FALLBACK_PROMPT
+    return FALLBACK_CONTEXT
   }
 
   const entries = await Promise.allSettled(doors.map(async d => [d, await fetchFile(d)]))
@@ -39,11 +42,20 @@ export async function initWikiContext() {
   })
 
   const loaded = doors.filter(d => cache[d] != null)
-  if (loaded.length === 0) return () => FALLBACK_PROMPT
+  if (loaded.length === 0) return FALLBACK_CONTEXT
 
-  return function buildPrompt(query) {
-    const selected = selectContext(query || '', loaded)
-    const body = selected.map(path => `## ${path}\n\n${cache[path]}`).join('\n\n---\n\n')
-    return `${PREAMBLE}\n\n${body}`
+  const paths = domainPaths(loaded) // domain name -> door path (loaded only)
+
+  return {
+    domains: Object.keys(paths),
+    readDomain(name) {
+      const path = paths[String(name).toLowerCase()]
+      return path ? cache[path] : null
+    },
+    buildPrompt(query) {
+      const selected = selectContext(query || '', loaded)
+      const body = selected.map(path => `## ${path}\n\n${cache[path]}`).join('\n\n---\n\n')
+      return `${PREAMBLE}\n\n${body}`
+    },
   }
 }
