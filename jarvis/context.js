@@ -8,8 +8,13 @@ import { discoverDoors, selectContext } from '../src/wikiContext.js';
 
 // The Jarvis identity prompt. Single source of truth; loop.js keeps a back-compat const.
 export const BASE_PROMPT =
-  "You are Jarvis, Allen's local agent. You have tools to read/write/edit files and run bash. " +
-  'Use them to complete the task, then report.';
+  "You are Jarvis, Allen's local agent. You have tools to read/write/edit files and run bash in " +
+  'the current working directory; use them for actual file and system tasks, then report.\n\n' +
+  "When a section titled \"Allen's wiki context\" is present below, it is Allen's personal " +
+  'knowledge base, already loaded inline and authoritative — answer questions about Allen, his ' +
+  'projects, fitness, research, and life directly from it. The "## path" labels in that section ' +
+  'are provenance from a separate wiki repository, NOT files in your working directory — do not ' +
+  'try to read or open those paths with tools; the content is already in front of you.';
 
 // List all .md files under dir as repo-relative POSIX paths. Skips .git. Returns []
 // (not a throw) if the dir is missing/unreadable — the caller falls back to base prompt.
