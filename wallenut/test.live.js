@@ -15,7 +15,7 @@ const SCRATCH = new URL('./scratch/hello.js', import.meta.url).pathname;
 
 async function run() {
   if (existsSync(SCRATCH)) rmSync(SCRATCH);
-  process.env.JARVIS_AUTO_CONFIRM = '1';
+  process.env.WALLENUT_AUTO_CONFIRM = '1';
 
   const tools = defaultTools();
   const registry = buildRegistry(tools);
@@ -35,7 +35,7 @@ async function run() {
       e.type === 'tool_call' ? console.log(`  → ${e.name}(${JSON.stringify(e.args).slice(0, 120)})`) : null,
   });
 
-  assert.ok(existsSync(SCRATCH), 'Jarvis wrote the file');
+  assert.ok(existsSync(SCRATCH), 'Wallenut wrote the file');
   assert.ok(/1\s*2\s*3\s*4\s*5/.test(out.text), `final report should contain 1 2 3 4 5, got: ${out.text}`);
   rmSync(SCRATCH);
   console.log('PASS — live Claude test');

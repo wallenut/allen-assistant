@@ -3,7 +3,7 @@ import Anthropic from '@anthropic-ai/sdk';
 // The model adapter is the swappable seam. One method: complete(system, messages, tools).
 // Returns { assistantContent, text, toolCalls: [{id, name, args}], stopReason, usage }.
 export class ClaudeAdapter {
-  constructor({ apiKey = process.env.ANTHROPIC_API_KEY, model = process.env.JARVIS_MODEL || 'claude-opus-4-8', maxTokens = 8192 } = {}) {
+  constructor({ apiKey = process.env.ANTHROPIC_API_KEY, model = process.env.WALLENUT_MODEL || 'claude-opus-4-8', maxTokens = 8192 } = {}) {
     this.client = new Anthropic({ apiKey });
     this.model = model;
     this.maxTokens = maxTokens;

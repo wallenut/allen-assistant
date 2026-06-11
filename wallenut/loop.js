@@ -2,7 +2,7 @@ export const MAX_STEPS = 25;
 export const TOKEN_BUDGET = 200_000;
 
 export const SYSTEM_PROMPT =
-  "You are Jarvis, Allen's local agent. You have tools to read/write/edit files and run bash. " +
+  "You are Wallenut, Allen's local agent. You have tools to read/write/edit files and run bash. " +
   'Use them to complete the task, then report.';
 
 // The agent loop. Runs one task to completion against an adapter + tool registry.
