@@ -30,6 +30,19 @@ app.use('/api/wiki', async (req, res) => {
   }
 })
 
+// Flat list of wiki paths — the open-world discovery surface for the context router.
+app.get('/api/wiki-tree', async (req, res) => {
+  try {
+    const url = `https://api.github.com/repos/${owner}/${repo}/git/trees/main?recursive=1`
+    const r = await fetch(url, { headers: { Authorization: `token ${GITHUB_TOKEN}` } })
+    if (!r.ok) return res.status(r.status).end()
+    const data = await r.json()
+    res.json((data.tree || []).filter(n => n.type === 'blob').map(n => n.path))
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 // ── Buffer read / write ───────────────────────────────────────────────────────
 
 app.use('/api/buffer', async (req, res, next) => {

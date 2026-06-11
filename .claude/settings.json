@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s http://localhost:*)",
+      "Bash(node server.js)",
+      "Bash(npm run dev)",
+      "Bash(node tests/wiki_context.test.mjs)",
+      "Bash(node tests/buffer_extraction_quality.test.mjs)"
+    ]
+  }
+}
