@@ -2,6 +2,7 @@ import readline from 'node:readline';
 import { ClaudeAdapter } from './adapters/claude.js';
 import { buildRegistry, defaultTools } from './registry.js';
 import { runLoop } from './loop.js';
+import { assembleSystem, BASE_PROMPT } from './context.js';
 
 // Print tool calls and results as the loop runs.
 function onEvent(evt) {
@@ -34,8 +35,15 @@ async function main() {
     const task = line.trim();
     if (!task) return rl.prompt();
     messages.push({ role: 'user', content: task });
+    // Route this turn to the relevant wiki door(s); fall back to the bare prompt on failure.
+    let system = BASE_PROMPT;
     try {
-      const out = await runLoop({ adapter, registry, tools, messages, onEvent });
+      system = await assembleSystem(task);
+    } catch (err) {
+      console.error(`  (wiki context unavailable: ${err.message})`);
+    }
+    try {
+      const out = await runLoop({ adapter, registry, tools, messages, onEvent, system });
       console.log(`\n${out.text}\n`);
     } catch (err) {
       console.error(`\nLoop error: ${err.message}\n`);

@@ -10,11 +10,11 @@ export const SYSTEM_PROMPT =
 //   evt: { type: 'tool_call', name, args } | { type: 'tool_result', name, result }
 //
 // `messages` is the running conversation (mutated in place so a REPL can keep state across turns).
-export async function runLoop({ adapter, registry, tools, messages, onEvent = () => {} }) {
+export async function runLoop({ adapter, registry, tools, messages, onEvent = () => {}, system = SYSTEM_PROMPT }) {
   let totalTokens = 0;
 
   for (let step = 0; step < MAX_STEPS; step++) {
-    const reply = await adapter.complete(SYSTEM_PROMPT, messages, tools);
+    const reply = await adapter.complete(system, messages, tools);
 
     if (reply.usage) {
       totalTokens += (reply.usage.input_tokens || 0) + (reply.usage.output_tokens || 0);
