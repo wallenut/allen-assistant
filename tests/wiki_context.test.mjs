@@ -8,7 +8,7 @@
 // 6. Selection is always a subset of available doors, with no duplicates
 // 7. Open-world: a brand-new projects/<x>/current_state.md routes by its name token with zero config
 
-import { discoverDoors, domainOf, selectContext, domainPaths, SYNTHESIS } from '../src/wikiContext.js';
+import { discoverDoors, domainOf, selectContext, classifyDomains, domainPaths, SYNTHESIS } from '../src/wikiContext.js';
 
 let passed = 0;
 let failed = 0;
@@ -97,6 +97,16 @@ assert('domainPaths keys cover every non-synthesis door', sameSet(
   Object.keys(dp),
   doors.filter(d => d !== SYNTHESIS).map(domainOf)
 ), Object.keys(dp).join(', '));
+
+// AC9: routing matches whole words, not substrings — a domain name embedded in an
+//      unrelated word must NOT route ("wildlife" must not pull the life door).
+assert('"wildlife" does NOT route to life (word boundary)', !classifyDomains('I saw wildlife today', doors).includes('life'));
+assert('"my life lately" DOES route to life', classifyDomains('how is my life lately?', doors).includes('life'));
+
+// AC10: raw/ history files are never treated as front doors, even if named current_state.md.
+const rawTree = ['fitness/current_state.md', 'fitness/raw/current_state.md', 'allen_synthesis.md'];
+assert('discoverDoors excludes /raw/ paths', sameSet(discoverDoors(rawTree),
+  ['fitness/current_state.md', 'allen_synthesis.md']), discoverDoors(rawTree).join(', '));
 
 console.log(`\n── Results: ${passed} passed, ${failed} failed ──────────────\n`);
 process.exit(failed > 0 ? 1 : 0);

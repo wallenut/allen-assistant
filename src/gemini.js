@@ -59,5 +59,7 @@ export async function sendMessage(history, text, systemPrompt, wiki) {
     result = await chat.sendMessage(parts)
   }
 
-  return result.response.text()
+  // If the model is still asking for tools after the loop bound, text() is empty —
+  // return a graceful message rather than a blank reply.
+  return result.response.text() || "I couldn't finish pulling that together — mind rephrasing?"
 }

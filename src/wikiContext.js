@@ -24,9 +24,10 @@ export function domainOf(path) {
   return parts[parts.length - 2].toLowerCase()
 }
 
-// Glob the flat tree for front doors: every **/current_state.md, plus the synthesis.
+// Glob the flat tree for front doors: every **/current_state.md (excluding raw/
+// history), plus the synthesis.
 export function discoverDoors(paths) {
-  const doors = paths.filter(p => p.endsWith('/current_state.md'))
+  const doors = paths.filter(p => p.endsWith('/current_state.md') && !p.includes('/raw/'))
   doors.push(SYNTHESIS) // synthesis is always loaded, whether or not it's in the tree
   return [...new Set(doors)]
 }
@@ -43,11 +44,16 @@ export function domainPaths(doors) {
   return map
 }
 
+// Whole-word match, so a domain name embedded in an unrelated word ("wildlife")
+// doesn't false-positive-route.
+function mentions(query, term) {
+  return new RegExp(`\\b${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(query)
+}
+
 // Query -> matched domain keys. Name-token match (open-world) OR alias match.
 export function classifyDomains(query, doors) {
-  const q = query.toLowerCase()
   const keys = doors.map(domainOf).filter(k => k !== 'synthesis')
-  return keys.filter(key => q.includes(key) || (ALIASES[key] || []).some(a => q.includes(a)))
+  return keys.filter(key => mentions(query, key) || (ALIASES[key] || []).some(a => mentions(query, a)))
 }
 
 // Assemble the load set: always the synthesis + every matched domain door.
