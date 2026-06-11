@@ -1,4 +1,4 @@
-// Deterministic test of the Jarvis spine — no API key required.
+// Deterministic test of the Wallenut spine — no API key required.
 // A MockAdapter returns scripted tool calls; we drive the REAL loop + REAL tools.
 // Proves: loop + tool interface + dispatch + result-feedback + termination.
 import { existsSync, readFileSync, rmSync } from 'node:fs';
@@ -41,7 +41,7 @@ class MockAdapter {
 
 async function run() {
   if (existsSync(SCRATCH)) rmSync(SCRATCH);
-  process.env.JARVIS_AUTO_CONFIRM = '1'; // auto-confirm the bash gate
+  process.env.WALLENUT_AUTO_CONFIRM = '1'; // auto-confirm the bash gate
 
   const tools = defaultTools();
   const registry = buildRegistry(tools);

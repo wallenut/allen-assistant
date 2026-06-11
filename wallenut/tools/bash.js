@@ -3,9 +3,9 @@ import { exec } from 'node:child_process';
 const MAX_OUTPUT = 30_000;
 const TIMEOUT_MS = 120_000;
 
-// Default confirm: auto-approve if JARVIS_AUTO_CONFIRM=1, else prompt y/n on REPL stdin.
+// Default confirm: auto-approve if WALLENUT_AUTO_CONFIRM=1, else prompt y/n on REPL stdin.
 async function defaultConfirm(cmd) {
-  if (process.env.JARVIS_AUTO_CONFIRM === '1') return true;
+  if (process.env.WALLENUT_AUTO_CONFIRM === '1') return true;
   const readline = await import('node:readline');
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   try {

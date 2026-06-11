@@ -35,7 +35,7 @@ async function main() {
   const tools = defaultTools(confirm);
   const registry = buildRegistry(tools);
 
-  console.log('Jarvis. Type a task; Ctrl-C to quit.\n');
+  console.log('Wallenut. Type a task; Ctrl-C to quit.\n');
   rl.setPrompt('> ');
   rl.prompt();
 
