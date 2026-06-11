@@ -2,6 +2,7 @@ import readline from 'node:readline';
 import { ClaudeAdapter } from './adapters/claude.js';
 import { buildRegistry, defaultTools } from './registry.js';
 import { runLoop } from './loop.js';
+import { assembleSystem, BASE_PROMPT } from './context.js';
 
 // Print tool calls and results as the loop runs.
 function onEvent(evt) {
@@ -20,27 +21,52 @@ async function main() {
   }
 
   const adapter = new ClaudeAdapter();
-  // Tools share the REPL's stdin for the bash confirm-gate (default confirm prompts there).
-  const tools = defaultTools();
-  const registry = buildRegistry(tools);
   const messages = [];
 
+  // One readline for the whole REPL: both the task prompt and the bash confirm-gate
+  // read from it. A second interface on the same stdin races for input — a stray
+  // keystroke gets read as a new task and launches a concurrent loop that corrupts
+  // the shared message history. So the bash gate reuses this rl via rl.question.
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  const confirm = (cmd) =>
+    new Promise((resolve) => {
+      rl.question(`\n  run bash: ${cmd}\n  approve? [y/N] `, (answer) => resolve(/^y/i.test(answer.trim())));
+    });
+  const tools = defaultTools(confirm);
+  const registry = buildRegistry(tools);
+
   console.log('Jarvis. Type a task; Ctrl-C to quit.\n');
   rl.setPrompt('> ');
   rl.prompt();
 
+  // Guard: one turn at a time. Input arriving mid-turn (e.g. an extra confirm keystroke)
+  // must not start a second concurrent runLoop against the shared `messages`.
+  let running = false;
   rl.on('line', async (line) => {
     const task = line.trim();
     if (!task) return rl.prompt();
+    if (running) {
+      console.log('  (busy — finish the current task first)');
+      return;
+    }
+    running = true;
     messages.push({ role: 'user', content: task });
+    // Route this turn to the relevant wiki door(s); fall back to the bare prompt on failure.
+    let system = BASE_PROMPT;
     try {
-      const out = await runLoop({ adapter, registry, tools, messages, onEvent });
+      system = await assembleSystem(task);
+    } catch (err) {
+      console.error(`  (wiki context unavailable: ${err.message})`);
+    }
+    try {
+      const out = await runLoop({ adapter, registry, tools, messages, onEvent, system });
       console.log(`\n${out.text}\n`);
     } catch (err) {
       console.error(`\nLoop error: ${err.message}\n`);
+    } finally {
+      running = false;
+      rl.prompt();
     }
-    rl.prompt();
   });
 
   rl.on('close', () => process.exit(0));
