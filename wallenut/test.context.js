@@ -26,9 +26,14 @@ async function run() {
   assert.ok(!sys.includes('TokenTransformer'), 'research-only content absent (TokenTransformer)');
   assert.ok(!sys.includes('MaxSimTag'), 'research-only content absent (MaxSimTag)');
 
-  // (b) Missing wiki dir => base prompt unchanged, no throw.
+  // wiki directory path injected in happy path.
+  assert.ok(sys.includes('Wiki directory:'), 'wiki directory path injected into system prompt');
+
+  // (b) Missing wiki dir => base prompt + wiki path injected, no throw.
   const fallback = await assembleSystem('anything', { wikiDir: '/nonexistent' });
-  assert.strictEqual(fallback, BASE_PROMPT, 'missing wiki dir falls back to base prompt unchanged');
+  assert.ok(fallback.startsWith(BASE_PROMPT), 'missing wiki dir: starts with base prompt');
+  assert.ok(fallback.includes('/nonexistent'), 'missing wiki dir: wiki path injected');
+  assert.ok(!fallback.includes("# Allen's wiki context (routed for this turn)"), 'missing wiki dir: no context block');
 
   console.log('PASS — context loader (routing + fs read + fallback)');
   console.log(`  routed system length=${sys.length} chars; fallback length=${fallback.length} chars`);
