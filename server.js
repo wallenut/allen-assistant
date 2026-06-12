@@ -5,6 +5,7 @@ import { dirname, join } from 'path'
 import { runLoop } from './wallenut/loop.js'
 import { ClaudeAdapter } from './wallenut/adapters/claude.js'
 import { assembleSystem, BASE_PROMPT } from './wallenut/context.js'
+import { discoverDoors, selectContext } from './src/wikiContext.js'
 import { buildRegistry } from './wallenut/registry.js'
 import { webSearch } from './wallenut/tools/web_search.js'
 
@@ -138,6 +139,40 @@ app.post('/api/buffer-move', async (req, res) => {
   }
 })
 
+// ── Wiki context via GitHub API (fallback when local wiki clone is absent) ────
+// Same logic as wallenut/context.js assembleSystem but fetches from GitHub.
+// Used on Railway where ~/allen-wiki doesn't exist.
+
+async function buildSystemFromGitHub(query) {
+  try {
+    const treeUrl = `https://api.github.com/repos/${owner}/${repo}/git/trees/main?recursive=1`
+    const treeRes = await fetch(treeUrl, { headers: { Authorization: `token ${GITHUB_TOKEN}` } })
+    if (!treeRes.ok) return BASE_PROMPT
+    const treeData = await treeRes.json()
+    const paths = (treeData.tree || []).filter(n => n.type === 'blob').map(n => n.path)
+
+    const doors = discoverDoors(paths)
+    const selected = selectContext(query, doors)
+
+    const blocks = []
+    for (const rel of selected) {
+      const fileRes = await fetch(
+        `https://raw.githubusercontent.com/${owner}/${repo}/main/${rel}`,
+        { headers: { Authorization: `token ${GITHUB_TOKEN}` } }
+      )
+      if (fileRes.ok) blocks.push(`## ${rel}\n${await fileRes.text()}`)
+    }
+
+    if (blocks.length === 0) return BASE_PROMPT
+    return BASE_PROMPT +
+      `\nWiki directory: GitHub (${owner}/${repo})` +
+      "\n\n# Allen's wiki context (routed for this turn)\n\n" +
+      blocks.join('\n\n')
+  } catch {
+    return BASE_PROMPT
+  }
+}
+
 // ── Chat (Wallenut runtime) ───────────────────────────────────────────────────
 
 app.post('/api/chat', async (req, res) => {
@@ -148,11 +183,11 @@ app.post('/api/chat', async (req, res) => {
   const { message, history = [] } = req.body
   const messages = [...history, { role: 'user', content: message }]
 
-  let system
-  try {
-    system = await assembleSystem(message)
-  } catch {
-    system = BASE_PROMPT
+  let system = await assembleSystem(message).catch(() => null)
+  // assembleSystem returns BASE_PROMPT (no wiki section) when the local clone is absent.
+  // Fall back to GitHub API so Railway gets the same routed context as local.
+  if (!system || !system.includes("Allen's wiki context")) {
+    system = await buildSystemFromGitHub(message)
   }
 
   res.setHeader('Content-Type', 'text/event-stream')
