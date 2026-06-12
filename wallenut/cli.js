@@ -1,8 +1,11 @@
 import readline from 'node:readline';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { ClaudeAdapter } from './adapters/claude.js';
 import { buildRegistry, defaultTools } from './registry.js';
 import { runLoop } from './loop.js';
 import { assembleSystem, BASE_PROMPT } from './context.js';
+import { captureBuffer } from './episodic.js';
 
 // Print tool calls and results as the loop runs.
 function onEvent(evt) {
@@ -69,7 +72,16 @@ async function main() {
     }
   });
 
-  rl.on('close', () => process.exit(0));
+  rl.on('close', async () => {
+    const wikiDir = process.env.WIKI_DIR || join(homedir(), 'allen-wiki');
+    const result = await Promise.resolve(captureBuffer(messages, wikiDir));
+    if (result.appended) {
+      console.log('  (session saved to buffer)');
+    } else {
+      console.log(`  (buffer save skipped: ${result.reason})`);
+    }
+    process.exit(0);
+  });
 }
 
 main();
