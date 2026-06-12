@@ -189,12 +189,9 @@ app.post('/api/chat', async (req, res) => {
   const { message, history = [], systemPrompt } = req.body
   const messages = [...history, { role: 'user', content: message }]
 
-  // Prefer the system prompt pre-built by the browser (src/wiki.js already loaded
-  // the wiki via /api/wiki). Fall back to server-side assembly for CLI / direct calls.
-  let system = systemPrompt || null
-  if (!system || !system.includes("Allen's wiki context")) {
-    system = await assembleSystem(message).catch(() => null)
-  }
+  // Trust the browser-built systemPrompt (src/wiki.js already loaded wiki via /api/wiki).
+  // Only run server-side assembly when no systemPrompt provided (CLI / direct callers).
+  let system = systemPrompt || await assembleSystem(message).catch(() => null)
   if (!system || !system.includes("Allen's wiki context")) {
     system = await buildSystemFromGitHub(message)
   }
