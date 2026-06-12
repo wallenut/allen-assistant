@@ -1,3 +1,4 @@
+import 'dotenv/config'
 import readline from 'node:readline';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
