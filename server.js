@@ -2,6 +2,11 @@ import 'dotenv/config'
 import express from 'express'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
+import { runLoop } from './wallenut/loop.js'
+import { ClaudeAdapter } from './wallenut/adapters/claude.js'
+import { assembleSystem } from './wallenut/context.js'
+import { buildRegistry } from './wallenut/registry.js'
+import { webSearch } from './wallenut/tools/web_search.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const isProd = process.env.NODE_ENV === 'production'
@@ -130,6 +135,57 @@ app.post('/api/buffer-move', async (req, res) => {
     res.json({ ok: true })
   } catch (err) {
     res.status(500).json({ error: err.message })
+  }
+})
+
+// ── Chat (Wallenut runtime) ───────────────────────────────────────────────────
+
+app.post('/api/chat', async (req, res) => {
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return res.status(503).json({ error: 'runtime not configured' })
+  }
+
+  const { message, history = [] } = req.body
+  const messages = [...history, { role: 'user', content: message }]
+
+  let system
+  try {
+    system = await assembleSystem(message)
+  } catch {
+    system = "You are Wallenut, Allen's personal AI assistant."
+  }
+
+  res.setHeader('Content-Type', 'text/event-stream')
+  res.setHeader('Cache-Control', 'no-cache')
+  res.setHeader('Connection', 'keep-alive')
+
+  function sendEvent(obj) {
+    res.write(`data: ${JSON.stringify(obj)}\n\n`)
+  }
+
+  try {
+    const adapter = new ClaudeAdapter()
+    const tools = [webSearch]
+    const registry = buildRegistry(tools)
+
+    const result = await runLoop({
+      adapter,
+      registry,
+      tools,
+      messages,
+      system,
+      onEvent: (evt) => {
+        if (evt.type === 'tool_call') sendEvent({ type: 'tool_call', name: evt.name, args: evt.args })
+        else if (evt.type === 'tool_result') sendEvent({ type: 'tool_result', name: evt.name, result: evt.result })
+      },
+    })
+
+    sendEvent({ type: 'text', text: result.text })
+    sendEvent({ type: 'done' })
+    res.end()
+  } catch (err) {
+    sendEvent({ type: 'done' })
+    res.end()
   }
 })
 
