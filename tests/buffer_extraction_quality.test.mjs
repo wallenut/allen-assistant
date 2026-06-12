@@ -60,36 +60,20 @@ await page.route('**/api/buffer/buffer/**', async (route, request) => {
   }
 });
 
-// Intercept only the first Gemini call (the assistant reply) and inject ASSISTANT_ONLY_PHRASE.
-// The SDK calls generativelanguage.googleapis.com directly — not a local proxy.
-// Extraction calls (later Gemini calls) pass through normally so real fact extraction runs.
-let geminiCallCount = 0;
-function makeGeminiResponse(text) {
-  return JSON.stringify({
-    candidates: [{
-      content: { parts: [{ text }], role: 'model' },
-      finishReason: 'STOP',
-      index: 0,
-    }],
-    usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 20, totalTokenCount: 30 },
+// P4: chat goes through the runtime (/api/chat SSE), not Gemini.
+// Inject ASSISTANT_ONLY_PHRASE in the mock chat response so extraction can see it.
+// All Gemini calls are extraction-only now — let them pass through.
+await page.route('**/api/chat', async (route) => {
+  const text =
+    `Based on your wiki context, I can see you have many ongoing projects. ` +
+    `The ${ASSISTANT_ONLY_PHRASE} is a critical internal codename I inferred from ` +
+    `your research documents. You are clearly very focused on distributed systems ` +
+    `and machine learning. Your fitness goals involve consistent training and recovery.`;
+  route.fulfill({
+    status: 200,
+    contentType: 'text/event-stream',
+    body: `data: ${JSON.stringify({ type: 'text', text })}\n\ndata: ${JSON.stringify({ type: 'done' })}\n\n`,
   });
-}
-await page.route('https://generativelanguage.googleapis.com/**', async (route, request) => {
-  geminiCallCount++;
-  if (geminiCallCount === 1) {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: makeGeminiResponse(
-        `Based on your wiki context, I can see you have many ongoing projects. ` +
-        `The ${ASSISTANT_ONLY_PHRASE} is a critical internal codename I inferred from ` +
-        `your research documents. You are clearly very focused on distributed systems ` +
-        `and machine learning. Your fitness goals involve consistent training and recovery.`
-      ),
-    });
-  } else {
-    await route.continue();
-  }
 });
 
 console.log('\n── Buffer Extraction Quality Tests ─────────────────\n');
@@ -185,7 +169,6 @@ if (firstPostCount >= 1) {
 
 // ── AC2: Second capture must not add duplicate entries ────────────────────────
 await page.waitForTimeout(5000);
-geminiCallCount = 0;
 
 // Stub GET to return the first write's content so writeEpisodicBuffer can deduplicate
 const firstPostContent = firstPostCount >= 1 ? bufferPosts[0].content : null;

@@ -21,8 +21,17 @@ function assert(label, condition, detail = '') {
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage();
 
-// Mock Gemini: every generateContent call returns a JSON-array text so that both the
-// chat reply and the fact extraction succeed.
+// P4: chat goes through the runtime (/api/chat SSE). Mock it so the exchange
+// completes without a running runtime or API key.
+await page.route('**/api/chat', route =>
+  route.fulfill({
+    status: 200,
+    contentType: 'text/event-stream',
+    body: 'data: {"type":"text","text":"test response"}\n\ndata: {"type":"done"}\n\n',
+  })
+);
+
+// Mock Gemini for fact extraction (the only remaining Gemini call after P4).
 const GEMINI_TEXT = '[{"type":"fact","content":"test fact","source":"user"}]';
 await page.route('**generativelanguage.googleapis.com**', route =>
   route.fulfill({

@@ -32,6 +32,16 @@ await page.route('**/api/buffer', (route, request) => {
   route.continue();
 });
 
+// P4: chat goes through the runtime, not Gemini. Mock the endpoint so tests
+// are self-contained and don't require a running runtime or API key.
+await page.route('**/api/chat', (route) => {
+  route.fulfill({
+    status: 200,
+    contentType: 'text/event-stream',
+    body: 'data: {"type":"text","text":"Mock assistant response for testing."}\n\ndata: {"type":"done"}\n\n',
+  });
+});
+
 console.log('\n── Episodic Buffer Tests ──────────────────────────\n');
 
 // Setup: login
@@ -47,10 +57,10 @@ assert('Capture button hidden before messages', hiddenBefore);
 // Send two exchanges
 await page.fill('textarea', 'What is my current research focus?');
 await page.keyboard.press('Enter');
-await page.waitForTimeout(8000);
+await page.waitForTimeout(2000);
 await page.fill('textarea', 'What are my fitness goals?');
 await page.keyboard.press('Enter');
-await page.waitForTimeout(8000);
+await page.waitForTimeout(2000);
 
 // AC2: Capture button visible after 2+ exchanges
 const visibleAfter = await page.isVisible('.capture-btn');
