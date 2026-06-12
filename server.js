@@ -145,14 +145,17 @@ app.post('/api/buffer-move', async (req, res) => {
 
 async function buildSystemFromGitHub(query) {
   try {
+    console.log('[wiki-gh] fetching tree for query:', query.slice(0, 60))
     const treeUrl = `https://api.github.com/repos/${owner}/${repo}/git/trees/main?recursive=1`
     const treeRes = await fetch(treeUrl, { headers: { Authorization: `token ${GITHUB_TOKEN}` } })
+    console.log('[wiki-gh] tree status:', treeRes.status, 'token set:', !!GITHUB_TOKEN)
     if (!treeRes.ok) return BASE_PROMPT
     const treeData = await treeRes.json()
     const paths = (treeData.tree || []).filter(n => n.type === 'blob').map(n => n.path)
 
     const doors = discoverDoors(paths)
     const selected = selectContext(query, doors)
+    console.log('[wiki-gh] doors:', doors.length, 'selected:', selected)
 
     const blocks = []
     for (const rel of selected) {
@@ -160,15 +163,18 @@ async function buildSystemFromGitHub(query) {
         `https://raw.githubusercontent.com/${owner}/${repo}/main/${rel}`,
         { headers: { Authorization: `token ${GITHUB_TOKEN}` } }
       )
+      console.log('[wiki-gh] file', rel, '→', fileRes.status)
       if (fileRes.ok) blocks.push(`## ${rel}\n${await fileRes.text()}`)
     }
 
+    console.log('[wiki-gh] blocks loaded:', blocks.length)
     if (blocks.length === 0) return BASE_PROMPT
     return BASE_PROMPT +
       `\nWiki directory: GitHub (${owner}/${repo})` +
       "\n\n# Allen's wiki context (routed for this turn)\n\n" +
       blocks.join('\n\n')
-  } catch {
+  } catch (err) {
+    console.error('[wiki-gh] error:', err.message)
     return BASE_PROMPT
   }
 }
