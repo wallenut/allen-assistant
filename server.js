@@ -186,12 +186,15 @@ app.post('/api/chat', async (req, res) => {
     return res.status(503).json({ error: 'runtime not configured' })
   }
 
-  const { message, history = [] } = req.body
+  const { message, history = [], systemPrompt } = req.body
   const messages = [...history, { role: 'user', content: message }]
 
-  let system = await assembleSystem(message).catch(() => null)
-  // assembleSystem returns BASE_PROMPT (no wiki section) when the local clone is absent.
-  // Fall back to GitHub API so Railway gets the same routed context as local.
+  // Prefer the system prompt pre-built by the browser (src/wiki.js already loaded
+  // the wiki via /api/wiki). Fall back to server-side assembly for CLI / direct calls.
+  let system = systemPrompt || null
+  if (!system || !system.includes("Allen's wiki context")) {
+    system = await assembleSystem(message).catch(() => null)
+  }
   if (!system || !system.includes("Allen's wiki context")) {
     system = await buildSystemFromGitHub(message)
   }

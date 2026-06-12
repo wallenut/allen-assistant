@@ -1,7 +1,7 @@
 // P4: transport shim — routes chat through the Wallenut runtime via POST /api/chat (SSE).
 // Keeps the same function signature as the old Gemini client so App.jsx requires no changes.
 
-export async function sendMessage(history, text /*, systemPrompt, wiki — unused; server handles context */) {
+export async function sendMessage(history, text, systemPrompt) {
   const mappedHistory = (history || []).map(msg => ({
     role: msg.role === 'user' ? 'user' : 'assistant',
     content: msg.text,
@@ -10,7 +10,7 @@ export async function sendMessage(history, text /*, systemPrompt, wiki — unuse
   const res = await fetch('/api/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message: text, history: mappedHistory }),
+    body: JSON.stringify({ message: text, history: mappedHistory, systemPrompt }),
   })
 
   if (!res.ok) {
