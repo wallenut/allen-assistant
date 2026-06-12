@@ -8,10 +8,19 @@ function today() {
   return new Date().toISOString().slice(0, 10); // YYYY-MM-DD
 }
 
-// Render a single content value to a short string (strips tool-result arrays).
+// Render a single content value to a short string.
+// Assistant content arrives as an array of blocks ({type:'text'|'tool_use'|...});
+// extract text blocks and skip tool calls / tool results.
 function renderContent(content) {
   if (typeof content === 'string') return content;
-  if (Array.isArray(content)) return null; // tool_result blocks — skip
+  if (Array.isArray(content)) {
+    const text = content
+      .filter(b => b && b.type === 'text')
+      .map(b => b.text)
+      .join(' ')
+      .trim();
+    return text || null;
+  }
   return String(content);
 }
 
@@ -22,7 +31,7 @@ function formatBlock(messages) {
     if (msg.role !== 'user' && msg.role !== 'assistant') continue;
     const text = renderContent(msg.content);
     if (!text || !text.trim()) continue;
-    const truncated = text.length > 300 ? text.slice(0, 300) + '…' : text;
+    const truncated = text.length > 600 ? text.slice(0, 600) + '…' : text;
     lines.push(`**${msg.role}:** ${truncated}`);
   }
   if (lines.length <= 1) return null; // only heading, no real turns

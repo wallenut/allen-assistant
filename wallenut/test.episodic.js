@@ -7,10 +7,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { captureBuffer } from './episodic.js';
 
+// Assistant content uses the real Claude adapter format: array of content blocks.
 const FAKE_MESSAGES = [
   { role: 'user', content: 'Hey Wallenut, what is my pec status?' },
-  { role: 'assistant', content: 'Based on your wiki, your pec is in the Bridge/Maintenance block.' },
+  { role: 'assistant', content: [{ type: 'text', text: 'Based on your wiki, your pec is in the Bridge/Maintenance block.' }] },
   { role: 'user', content: 'Great, thanks.' },
+  // Tool result arrays must be skipped (user role, array content = tool_result blocks).
+  { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'x', content: 'file contents' }] },
+  { role: 'assistant', content: [{ type: 'tool_use', id: 'x', name: 'read', input: {} }, { type: 'text', text: 'Done — pec cleared for light pressing.' }] },
 ];
 
 async function run() {
@@ -36,7 +40,9 @@ async function run() {
 
     // File must contain the session turns.
     assert.ok(contents.includes('**user:** Hey Wallenut'), 'user turn present in buffer file');
-    assert.ok(contents.includes('**assistant:** Based on your wiki'), 'assistant turn present in buffer file');
+    assert.ok(contents.includes('**assistant:** Based on your wiki'), 'assistant turn (array content) present in buffer file');
+    assert.ok(contents.includes('**assistant:** Done — pec cleared'), 'assistant turn with mixed tool_use+text blocks captured');
+    assert.ok(!contents.includes('tool_result'), 'tool_result blocks not leaked into buffer');
     assert.ok(contents.includes('**user:** Great, thanks.'), 'second user turn present in buffer file');
 
     // Exactly one commit in the repo.
