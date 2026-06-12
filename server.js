@@ -4,7 +4,7 @@ import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
 import { runLoop } from './wallenut/loop.js'
 import { ClaudeAdapter } from './wallenut/adapters/claude.js'
-import { assembleSystem } from './wallenut/context.js'
+import { assembleSystem, BASE_PROMPT } from './wallenut/context.js'
 import { buildRegistry } from './wallenut/registry.js'
 import { webSearch } from './wallenut/tools/web_search.js'
 
@@ -152,7 +152,7 @@ app.post('/api/chat', async (req, res) => {
   try {
     system = await assembleSystem(message)
   } catch {
-    system = "You are Wallenut, Allen's personal AI assistant."
+    system = BASE_PROMPT
   }
 
   res.setHeader('Content-Type', 'text/event-stream')
@@ -184,6 +184,7 @@ app.post('/api/chat', async (req, res) => {
     sendEvent({ type: 'done' })
     res.end()
   } catch (err) {
+    console.error('runLoop error:', err)
     sendEvent({ type: 'done' })
     res.end()
   }
