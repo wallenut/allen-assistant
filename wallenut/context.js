@@ -13,8 +13,10 @@ export const BASE_PROMPT =
   "When a section titled \"Allen's wiki context\" is present below, it is Allen's personal " +
   'knowledge base, already loaded inline and authoritative — answer questions about Allen, his ' +
   'projects, fitness, research, and life directly from it. The "## path" labels in that section ' +
-  'are provenance from a separate wiki repository, NOT files in your working directory — do not ' +
-  'try to read or open those paths with tools; the content is already in front of you.';
+  'are file paths relative to the wiki root. To update a wiki file: use edit (or write) on ' +
+  'the full path (wikiDir + "/" + the ## label), then run bash to show a git diff for review, ' +
+  'then git commit on approval. The concrete wiki directory path is shown below. ' +
+  'Never commit without showing the diff first.';
 
 // List all .md files under dir as repo-relative POSIX paths. Skips .git. Returns []
 // (not a throw) if the dir is missing/unreadable — the caller falls back to base prompt.
@@ -28,11 +30,12 @@ async function listMarkdown(dir) {
 // Build the routed system prompt for one user turn. Always returns a string;
 // on any wiki failure returns basePrompt unchanged (CLAUDE.md: fall back, never block).
 export async function assembleSystem(query, { wikiDir = process.env.WIKI_DIR || join(homedir(), 'allen-wiki'), basePrompt = BASE_PROMPT } = {}) {
+  const wikiPathLine = `\nWiki directory: ${wikiDir}`;
   let paths;
   try {
     paths = await listMarkdown(wikiDir);
   } catch {
-    return basePrompt; // wiki missing/unreadable — continue with the bare identity prompt
+    return basePrompt + wikiPathLine; // wiki missing/unreadable — continue with the bare identity prompt
   }
 
   const doors = discoverDoors(paths);
@@ -50,7 +53,7 @@ export async function assembleSystem(query, { wikiDir = process.env.WIKI_DIR || 
     }
   }
 
-  if (blocks.length === 0) return basePrompt; // nothing loaded — fall back
+  if (blocks.length === 0) return basePrompt + wikiPathLine; // nothing loaded — fall back
 
-  return basePrompt + "\n\n# Allen's wiki context (routed for this turn)\n\n" + blocks.join('\n\n');
+  return basePrompt + wikiPathLine + "\n\n# Allen's wiki context (routed for this turn)\n\n" + blocks.join('\n\n');
 }
