@@ -137,6 +137,8 @@ function Chat() {
   const activeIdRef = useRef(activeId)
   const recognitionRef = useRef(null)
   const transcriptRef = useRef('')
+  const finalTranscriptRef = useRef('')
+  const manualStopRef = useRef(false)
   const voiceInputRef = useRef(false)
   const bottomRef = useRef(null)
   const textareaRef = useRef(null)
@@ -345,9 +347,12 @@ function Chat() {
     if (speaking) { stopSpeaking(); return }
 
     if (listening) {
+      manualStopRef.current = true
+      recognitionRef.current?.stop()
       const transcript = transcriptRef.current
       transcriptRef.current = ''
-      recognitionRef.current?.stop()
+      finalTranscriptRef.current = ''
+      setListening(false)
       if (transcript) doSend(transcript, true)
       return
     }
@@ -355,17 +360,40 @@ function Chat() {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
     if (!SpeechRecognition) { alert('Speech recognition is not supported in this browser.'); return }
 
+    manualStopRef.current = false
+    finalTranscriptRef.current = ''
+    transcriptRef.current = ''
+
     const recognition = new SpeechRecognition()
     recognition.continuous = true
     recognition.interimResults = true
     recognition.lang = 'en-US'
     recognition.onstart = () => setListening(true)
-    recognition.onend = () => setListening(false)
-    recognition.onerror = () => setListening(false)
+    // Accumulate FINAL results into a persistent buffer so they survive auto-restarts;
+    // show interim on top. (Rebuilding from e.results would reset on each restart.)
     recognition.onresult = (e) => {
-      let text = ''
-      for (let i = 0; i < e.results.length; i++) text += e.results[i][0].transcript
-      transcriptRef.current = text.trim()
+      let interim = ''
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const r = e.results[i]
+        if (r.isFinal) finalTranscriptRef.current += r[0].transcript + ' '
+        else interim += r[0].transcript
+      }
+      transcriptRef.current = (finalTranscriptRef.current + interim).trim()
+    }
+    recognition.onerror = (ev) => {
+      // Permission problems are terminal; silence/no-speech is not — let onend restart.
+      if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed') {
+        manualStopRef.current = true
+        setListening(false)
+      }
+    }
+    // Browser ends the session on silence/timeout. If the user hasn't tapped stop,
+    // restart so long, paused brain-dumps keep going and nothing is stranded.
+    recognition.onend = () => {
+      if (!manualStopRef.current) {
+        try { recognition.start(); return } catch { /* fall through */ }
+      }
+      setListening(false)
     }
 
     recognitionRef.current = recognition
