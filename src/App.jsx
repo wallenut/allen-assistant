@@ -3,7 +3,7 @@ import Markdown from 'react-markdown'
 import './App.css'
 import { sendMessage } from './gemini.js'
 import { initWikiContext } from './wiki.js'
-import { extractFacts, writeEpisodicBuffer } from './buffer.js'
+import { captureToServer } from './buffer.js'
 import ReviewPanel from './ReviewPanel.jsx'
 
 const GREETING = { id: 0, role: 'assistant', text: "Hey Allen. What's on your mind?", time: '' }
@@ -208,10 +208,9 @@ function Chat() {
     captureInFlightRef.current = true
     setCaptureStatus('capturing')
     try {
-      const facts = await extractFacts(realMessages)
-      await writeEpisodicBuffer(facts)
+      const { count } = await captureToServer(realMessages)
       capturedRef.current = true // latch only on success, so failures stay retryable
-      setCaptureStatus(facts.length)
+      setCaptureStatus(count)
       setTimeout(() => setCaptureStatus(null), 3000)
     } catch (err) {
       console.error('captureSession failed:', err)

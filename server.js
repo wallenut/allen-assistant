@@ -8,6 +8,8 @@ import { assembleSystem, BASE_PROMPT } from './wallenut/context.js'
 import { discoverDoors, selectContext } from './src/wikiContext.js'
 import { buildRegistry } from './wallenut/registry.js'
 import { webSearch } from './wallenut/tools/web_search.js'
+import { extractFacts, writeBufferFacts, readBufferFacts, proposePromotion, applyPromotion } from './wallenut/memory.js'
+import { makeGitHubStore } from './wallenut/store.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const isProd = process.env.NODE_ENV === 'production'
@@ -50,6 +52,7 @@ app.get('/api/wiki-tree', async (req, res) => {
 })
 
 // ── Buffer read / write ───────────────────────────────────────────────────────
+// DEPRECATED 2026-06-14: superseded by /api/capture + /api/promote/* (memory spine v2)
 
 app.use('/api/buffer', async (req, res, next) => {
   if (req.method === 'GET') {
@@ -105,6 +108,7 @@ app.post('/api/wiki-write', async (req, res) => {
 })
 
 // ── Buffer move (to reviewed/) ────────────────────────────────────────────────
+// DEPRECATED 2026-06-14: superseded by /api/capture + /api/promote/* (memory spine v2)
 
 app.post('/api/buffer-move', async (req, res) => {
   try {
@@ -135,6 +139,93 @@ app.post('/api/buffer-move', async (req, res) => {
 
     res.json({ ok: true })
   } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// ── Memory spine (v2) ────────────────────────────────────────────────────────
+// Dedicated endpoints that call memory.js directly — NOT through the agent loop.
+
+// Build shared resources once at module load. Store and llm shim are only
+// used when ANTHROPIC_API_KEY is set (Railway). Locally the endpoints will
+// error on the LLM call — that's expected and intentional.
+const _memStore = makeGitHubStore({ owner, repo, token: GITHUB_TOKEN })
+
+function _makeLlm() {
+  const adapter = new ClaudeAdapter()
+  return async (system, user) =>
+    (await adapter.complete(system, [{ role: 'user', content: user }], [])).text
+}
+
+// POST /api/capture — body: { messages }
+// Extracts facts from the transcript and appends to buffer/{today}.json.
+// Returns: { count: number }
+app.post('/api/capture', async (req, res) => {
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return res.status(503).json({ error: 'runtime not configured' })
+  }
+  try {
+    const { messages } = req.body
+    const llm = _makeLlm()
+    const facts = await extractFacts(messages, { llm })
+    await writeBufferFacts(facts, { store: _memStore })
+    res.json({ count: facts.length })
+  } catch (err) {
+    console.error('POST /api/capture error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// POST /api/promote/propose — body: { date? }
+// Reads buffer/{date}.json, fetches wiki tree, proposes promotion edits.
+// Returns: { proposals }
+app.post('/api/promote/propose', async (req, res) => {
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return res.status(503).json({ error: 'runtime not configured' })
+  }
+  try {
+    const date = req.body?.date || new Date().toISOString().slice(0, 10)
+    const facts = await readBufferFacts(date, { store: _memStore })
+
+    const treeUrl = `https://api.github.com/repos/${owner}/${repo}/git/trees/main?recursive=1`
+    const treeRes = await fetch(treeUrl, { headers: { Authorization: `token ${GITHUB_TOKEN}` } })
+    const treeData = treeRes.ok ? await treeRes.json() : { tree: [] }
+    const wikiFiles = (treeData.tree || []).filter(n => n.type === 'blob').map(n => n.path)
+
+    const llm = _makeLlm()
+    const proposals = await proposePromotion(facts, { llm, store: _memStore, wikiFiles })
+    res.json({ proposals })
+  } catch (err) {
+    console.error('POST /api/promote/propose error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// POST /api/promote/apply — body: { approved, date? }
+// Applies approved proposals to wiki files, then archives buffer/{date}.json.
+// Returns: { summary }
+app.post('/api/promote/apply', async (req, res) => {
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return res.status(503).json({ error: 'runtime not configured' })
+  }
+  try {
+    const { approved = [] } = req.body
+    const date = req.body?.date || new Date().toISOString().slice(0, 10)
+
+    const summary = await applyPromotion(approved, { store: _memStore })
+
+    // Archive: move buffer/{date}.json → buffer/reviewed/{date}.json
+    const srcPath = `buffer/${date}.json`
+    const dstPath = `buffer/reviewed/${date}.json`
+    const src = await _memStore.read(srcPath)
+    if (src) {
+      await _memStore.write(dstPath, { content: src.content, message: `buffer: reviewed ${date}`, sha: undefined })
+      await _memStore.remove(srcPath, { message: `buffer: archive ${date}`, sha: src.sha })
+    }
+
+    res.json({ summary })
+  } catch (err) {
+    console.error('POST /api/promote/apply error:', err.message)
     res.status(500).json({ error: err.message })
   }
 })

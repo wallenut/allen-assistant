@@ -290,6 +290,45 @@ await test('applyPromotion: replace with missing anchor throws clear error', asy
   );
 });
 
+await test('applyPromotion: append op ensures clean line separator (no jammed lines)', async () => {
+  const store = makeStore();
+  // File ending WITHOUT trailing newline — simulates the jam case.
+  await store.write('fitness/current_state.md', { content: '# Fitness\n- existing item' });
+
+  const proposals = [
+    { file: 'fitness/current_state.md', op: 'append', addition: '- new item', rationale: 'test separator' },
+  ];
+  await applyPromotion(proposals, { store });
+
+  const after = await store.read('fitness/current_state.md');
+  // Must have exactly two newlines between existing content and addition.
+  assert.ok(
+    after.content.includes('- existing item\n\n- new item'),
+    `expected double-newline separator, got: ${JSON.stringify(after.content)}`
+  );
+  // addition.trim() + trailing newline.
+  assert.ok(after.content.endsWith('- new item\n'), `should end with trailing newline: ${JSON.stringify(after.content)}`);
+});
+
+await test('applyPromotion: append op trims trailing whitespace from existing content before adding separator', async () => {
+  const store = makeStore();
+  // File ending with extra whitespace/newlines.
+  await store.write('fitness/current_state.md', { content: '# Fitness\n- existing item\n\n\n  ' });
+
+  const proposals = [
+    { file: 'fitness/current_state.md', op: 'append', addition: '- appended', rationale: 'test trim' },
+  ];
+  await applyPromotion(proposals, { store });
+
+  const after = await store.read('fitness/current_state.md');
+  // Should not have more than two newlines between sections.
+  assert.ok(
+    !after.content.match(/\n{3,}/),
+    `should not have triple+ newlines: ${JSON.stringify(after.content)}`
+  );
+  assert.ok(after.content.includes('- existing item\n\n- appended\n'), `correct separator: ${JSON.stringify(after.content)}`);
+});
+
 await test('applyPromotion: applies multiple proposals in order', async () => {
   const store = makeStore();
   await store.write('fitness/current_state.md', { content: '# Fitness\nold note\n' });

@@ -1,48 +1,7 @@
 import { useState } from 'react'
 import Markdown from 'react-markdown'
-import { sendMessage } from './gemini.js'
 
 const today = new Date().toISOString().split('T')[0]
-
-async function readTodayBuffer() {
-  const res = await fetch(`/api/buffer/buffer/${today}.md`)
-  if (res.status === 404) return null
-  if (!res.ok) throw new Error('Failed to read buffer')
-  const data = await res.json()
-  return atob(data.content.replace(/\n/g, ''))
-}
-
-async function readWikiFile(path) {
-  const res = await fetch(`/api/wiki/${path}`)
-  if (!res.ok) return ''
-  return res.text()
-}
-
-async function writeWikiFile(path, content) {
-  const res = await fetch('/api/wiki-write', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ path, content }),
-  })
-  if (!res.ok) throw new Error('Write failed')
-}
-
-async function moveBuffer() {
-  const res = await fetch('/api/buffer-move', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ date: today }),
-  })
-  if (!res.ok) throw new Error('Move failed')
-}
-
-const WIKI_FILES = [
-  'allen_synthesis.md',
-  'research/current_state.md',
-  'fitness/current_state.md',
-  'life/current_state.md',
-  'ops/tasks.md',
-]
 
 export default function ReviewPanel({ onClose }) {
   const [phase, setPhase] = useState('idle') // idle | loading | reviewing | applying | done | empty | error
@@ -53,39 +12,18 @@ export default function ReviewPanel({ onClose }) {
   async function startReview() {
     setPhase('loading')
     try {
-      const buffer = await readTodayBuffer()
-      if (!buffer) { setPhase('empty'); return }
-
-      const wikiContents = await Promise.all(WIKI_FILES.map(f => readWikiFile(f).then(c => `## ${f}\n\n${c}`)))
-      const wikiSummary = wikiContents.join('\n\n---\n\n')
-
-      const prompt = `You are reviewing today's conversation buffer to identify what should be added to Allen's wiki.
-
-BUFFER (today's saved conversations):
-${buffer}
-
-CURRENT WIKI STATE:
-${wikiSummary}
-
-Your task:
-1. Identify which buffer entries contain NEW, meaningful information not already in the wiki (ignore throwaway chats)
-2. For each meaningful finding, propose a specific addition to a specific wiki file
-
-Respond with a JSON array only, no other text. Each item:
-{
-  "file": "<one of: allen_synthesis.md, research/current_state.md, fitness/current_state.md, life/current_state.md, ops/tasks.md>",
-  "rationale": "<one sentence: why this matters>",
-  "addition": "<exact markdown text to append to the file>"
-}
-
-If nothing meaningful found, return an empty array [].`
-
-      const raw = await sendMessage([], prompt, 'You are a precise JSON generator. Output only valid JSON, nothing else.')
-      const json = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
-      const parsed = JSON.parse(json)
-
-      if (!parsed.length) { setPhase('empty'); return }
-      setProposals(parsed)
+      const res = await fetch('/api/promote/propose', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date: today }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body.error || `Propose failed: ${res.status}`)
+      }
+      const { proposals: proposed } = await res.json()
+      if (!proposed || !proposed.length) { setPhase('empty'); return }
+      setProposals(proposed)
       setPhase('reviewing')
     } catch (err) {
       console.error(err)
@@ -99,13 +37,16 @@ If nothing meaningful found, return an empty array [].`
     try {
       const approved = proposals.filter((_, i) => decisions[i] === 'approve')
 
-      for (const p of approved) {
-        const current = await readWikiFile(p.file)
-        const updated = current.trimEnd() + '\n\n' + p.addition.trim() + '\n'
-        await writeWikiFile(p.file, updated)
+      const res = await fetch('/api/promote/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ approved, date: today }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body.error || `Apply failed: ${res.status}`)
       }
 
-      await moveBuffer()
       setPhase('done')
     } catch (err) {
       setError(err.message)
@@ -190,7 +131,7 @@ If nothing meaningful found, return an empty array [].`
 
           {phase === 'done' && (
             <div className="review-start">
-              <p>Wiki updated. Buffer archived to <code>buffer/reviewed/{today}.md</code>.</p>
+              <p>Wiki updated. Buffer archived to <code>buffer/reviewed/{today}.json</code>.</p>
               <button className="review-action-btn" onClick={onClose}>Done</button>
             </div>
           )}
