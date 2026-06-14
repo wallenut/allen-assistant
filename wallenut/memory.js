@@ -242,7 +242,7 @@ export async function applyPromotion(approvedProposals, { store }) {
     const current = existing?.content ?? '';
 
     if (op === 'append') {
-      const updated = current + addition;
+      const updated = current.replace(/\s*$/, '') + '\n\n' + addition.trim() + '\n';
       await store.write(file, {
         content: updated,
         message: `memory: append to ${file}`,

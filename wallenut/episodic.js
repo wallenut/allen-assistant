@@ -1,3 +1,4 @@
+// DEPRECATED 2026-06-14: replaced by wallenut/memory.js (.json fact extraction). Kept for reference.
 // P5a: lifecycle writeback. At session end, appends a plaintext summary of the
 // conversation to {wikiDir}/buffer/{YYYY-MM-DD}.md and git-commits it. No LLM call.
 import { existsSync, mkdirSync, appendFileSync } from 'node:fs';
