@@ -4,7 +4,7 @@ import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
 import { runLoop } from './wallenut/loop.js'
 import { ClaudeAdapter } from './wallenut/adapters/claude.js'
-import { assembleSystem, BASE_PROMPT } from './wallenut/context.js'
+import { BASE_PROMPT } from './wallenut/context.js'
 import { discoverDoors, selectContext } from './src/wikiContext.js'
 import { buildRegistry } from './wallenut/registry.js'
 import { webSearch } from './wallenut/tools/web_search.js'
@@ -46,98 +46,6 @@ app.get('/api/wiki-tree', async (req, res) => {
     if (!r.ok) return res.status(r.status).end()
     const data = await r.json()
     res.json((data.tree || []).filter(n => n.type === 'blob').map(n => n.path))
-  } catch (err) {
-    res.status(500).json({ error: err.message })
-  }
-})
-
-// ── Buffer read / write ───────────────────────────────────────────────────────
-// DEPRECATED 2026-06-14: superseded by /api/capture + /api/promote/* (memory spine v2)
-
-app.use('/api/buffer', async (req, res, next) => {
-  if (req.method === 'GET') {
-    try {
-      const path = req.path.replace(/^\//, '')
-      const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`
-      const r = await fetch(url, { headers: { Authorization: `token ${GITHUB_TOKEN}` } })
-      if (!r.ok) return res.status(r.status).end()
-      res.json(await r.json())
-    } catch (err) {
-      res.status(500).json({ error: err.message })
-    }
-  } else {
-    next()
-  }
-})
-
-app.post('/api/buffer', async (req, res) => {
-  try {
-    const { path, content, sha, message } = req.body
-    const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`
-    const r = await fetch(url, {
-      method: 'PUT',
-      headers: { Authorization: `token ${GITHUB_TOKEN}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message, content, ...(sha ? { sha } : {}) }),
-    })
-    res.status(r.status).json(await r.json())
-  } catch (err) {
-    res.status(500).json({ error: err.message })
-  }
-})
-
-// ── Wiki write ────────────────────────────────────────────────────────────────
-
-app.post('/api/wiki-write', async (req, res) => {
-  try {
-    const { path, content } = req.body
-    const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`
-    let sha
-    try {
-      const r = await fetch(url, { headers: { Authorization: `token ${GITHUB_TOKEN}` } })
-      if (r.ok) { const d = await r.json(); sha = d.sha }
-    } catch {}
-    const r = await fetch(url, {
-      method: 'PUT',
-      headers: { Authorization: `token ${GITHUB_TOKEN}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: `wallenut: update ${path}`, content: btoa(unescape(encodeURIComponent(content))), ...(sha ? { sha } : {}) }),
-    })
-    res.status(r.status).json(await r.json())
-  } catch (err) {
-    res.status(500).json({ error: err.message })
-  }
-})
-
-// ── Buffer move (to reviewed/) ────────────────────────────────────────────────
-// DEPRECATED 2026-06-14: superseded by /api/capture + /api/promote/* (memory spine v2)
-
-app.post('/api/buffer-move', async (req, res) => {
-  try {
-    const { date } = req.body
-    const srcPath = `buffer/${date}.md`
-    const dstPath = `buffer/reviewed/${date}.md`
-
-    // Read source
-    const srcUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${srcPath}`
-    const srcRes = await fetch(srcUrl, { headers: { Authorization: `token ${GITHUB_TOKEN}` } })
-    if (!srcRes.ok) return res.status(srcRes.status).end()
-    const src = await srcRes.json()
-
-    // Create destination
-    const dstUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${dstPath}`
-    await fetch(dstUrl, {
-      method: 'PUT',
-      headers: { Authorization: `token ${GITHUB_TOKEN}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: `buffer: reviewed ${date}`, content: src.content.replace(/\n/g, '') }),
-    })
-
-    // Delete source
-    await fetch(srcUrl, {
-      method: 'DELETE',
-      headers: { Authorization: `token ${GITHUB_TOKEN}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: `buffer: archive ${date}`, sha: src.sha }),
-    })
-
-    res.json({ ok: true })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
@@ -349,9 +257,10 @@ app.post('/api/chat', async (req, res) => {
   const { message, history = [], systemPrompt } = req.body
   const messages = [...history, { role: 'user', content: message }]
 
-  // Trust the browser-built systemPrompt (src/wiki.js already loaded wiki via /api/wiki).
-  // Only run server-side assembly when no systemPrompt provided (CLI / direct callers).
-  let system = systemPrompt || await assembleSystem(message).catch(() => null)
+  // Trust the browser-built systemPrompt if it carries wiki context (src/wiki.js
+  // loaded it via /api/wiki). Otherwise build it server-side from GitHub — the
+  // Railway path, since there's no local wiki clone there.
+  let system = systemPrompt
   if (!system || !system.includes("Allen's wiki context")) {
     system = await buildSystemFromGitHub(message)
   }
