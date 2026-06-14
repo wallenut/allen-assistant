@@ -139,6 +139,7 @@ function Chat() {
   const transcriptRef = useRef('')
   const finalTranscriptRef = useRef('')
   const manualStopRef = useRef(false)
+  const audioRef = useRef(null)
   const voiceInputRef = useRef(false)
   const bottomRef = useRef(null)
   const textareaRef = useRef(null)
@@ -222,7 +223,33 @@ function Chat() {
     }
   }
 
-  function speak(text) {
+  // Natural voice via Gemini TTS (server /api/tts). Falls back to browser speech
+  // synthesis on any failure so voice never goes silent.
+  async function speak(text) {
+    const clean = stripMarkdown(text)
+    if (!clean) return
+    stopSpeaking()
+    try {
+      const res = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: clean }),
+      })
+      if (!res.ok) throw new Error(`tts ${res.status}`)
+      const url = URL.createObjectURL(await res.blob())
+      const audio = new Audio(url)
+      audioRef.current = audio
+      audio.onplay = () => setSpeaking(true)
+      audio.onended = () => { setSpeaking(false); URL.revokeObjectURL(url); audioRef.current = null }
+      audio.onerror = () => { setSpeaking(false); URL.revokeObjectURL(url); audioRef.current = null }
+      await audio.play()
+    } catch (err) {
+      console.warn('Gemini TTS failed, falling back to browser voice:', err.message)
+      speakBrowser(clean)
+    }
+  }
+
+  function speakBrowser(text) {
     window.speechSynthesis.cancel()
     const clean = stripMarkdown(text)
     if (!clean) return
@@ -269,6 +296,10 @@ function Chat() {
   }
 
   function stopSpeaking() {
+    if (audioRef.current) {
+      audioRef.current.pause()
+      audioRef.current = null
+    }
     window.speechSynthesis.cancel()
     setSpeaking(false)
   }

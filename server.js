@@ -235,6 +235,70 @@ app.post('/api/promote/apply', async (req, res) => {
   }
 })
 
+// ── Text-to-speech (Gemini TTS — natural voice) ───────────────────────────────
+// Brain stays Claude; this is just the vocal cords. Returns playable WAV.
+
+// Wrap raw 16-bit mono PCM in a minimal WAV header so the browser can play it.
+function pcmToWav(pcm, sampleRate = 24000, channels = 1, bits = 16) {
+  const blockAlign = (channels * bits) / 8
+  const h = Buffer.alloc(44)
+  h.write('RIFF', 0)
+  h.writeUInt32LE(36 + pcm.length, 4)
+  h.write('WAVE', 8)
+  h.write('fmt ', 12)
+  h.writeUInt32LE(16, 16)
+  h.writeUInt16LE(1, 20) // PCM
+  h.writeUInt16LE(channels, 22)
+  h.writeUInt32LE(sampleRate, 24)
+  h.writeUInt32LE(sampleRate * blockAlign, 28)
+  h.writeUInt16LE(blockAlign, 32)
+  h.writeUInt16LE(bits, 34)
+  h.write('data', 36)
+  h.writeUInt32LE(pcm.length, 40)
+  return Buffer.concat([h, pcm])
+}
+
+// POST /api/tts — body: { text, voice? } → audio/wav
+app.post('/api/tts', async (req, res) => {
+  try {
+    const { text, voice = process.env.GEMINI_TTS_VOICE || 'Charon' } = req.body
+    if (!text || !text.trim()) return res.status(400).json({ error: 'no text' })
+    const key = process.env.VITE_GEMINI_API_KEY
+    if (!key) return res.status(503).json({ error: 'tts not configured' })
+    const model = process.env.GEMINI_TTS_MODEL || 'gemini-2.5-flash-preview-tts'
+
+    const r = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text }] }],
+          generationConfig: {
+            responseModalities: ['AUDIO'],
+            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } },
+          },
+        }),
+      }
+    )
+    if (!r.ok) {
+      const t = await r.text()
+      return res.status(502).json({ error: `tts upstream ${r.status}: ${t.slice(0, 200)}` })
+    }
+    const d = await r.json()
+    const part = d?.candidates?.[0]?.content?.parts?.[0]
+    if (!part?.inlineData?.data) return res.status(502).json({ error: 'no audio in tts response' })
+
+    const rate = parseInt((part.inlineData.mimeType.match(/rate=(\d+)/) || [])[1] || '24000', 10)
+    const wav = pcmToWav(Buffer.from(part.inlineData.data, 'base64'), rate)
+    res.set('Content-Type', 'audio/wav')
+    res.send(wav)
+  } catch (err) {
+    console.error('POST /api/tts error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
 // ── Wiki context via GitHub API (fallback when local wiki clone is absent) ────
 // Same logic as wallenut/context.js assembleSystem but fetches from GitHub.
 // Used on Railway where ~/allen-wiki doesn't exist.
