@@ -369,13 +369,13 @@ function Chat() {
           ))}
         </div>
 
-        {archivedSessions.length > 0 && (
-          <>
-            <button className="review-buffer-btn" onClick={() => { setSidebarOpen(false); setReviewOpen(true) }}>
+        <button className="review-buffer-btn" onClick={() => { setSidebarOpen(false); setReviewOpen(true) }}>
           Review buffer
         </button>
 
-        <div className="sidebar-section-label">Archived</div>
+        {archivedSessions.length > 0 && (
+          <>
+            <div className="sidebar-section-label">Archived</div>
             <div className="session-list">
               {archivedSessions.map(s => (
                 <div key={s.id} className={`session-item archived${s.id === activeId ? ' active' : ''}`}>
