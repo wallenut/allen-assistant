@@ -222,16 +222,48 @@ function Chat() {
 
   function speak(text) {
     window.speechSynthesis.cancel()
-    const utterance = new SpeechSynthesisUtterance(stripMarkdown(text))
+    const clean = stripMarkdown(text)
+    if (!clean) return
+
+    // Chrome silently stops a single utterance after ~15s. Split into sentence-sized
+    // chunks and queue them so each plays fully and auto-advances. Long sentences are
+    // further split on commas/length so no single chunk trips the limit.
+    const sentences = clean.match(/[^.!?\n]+[.!?]*(?:\s+|$)/g) || [clean]
+    const chunks = []
+    for (const s of sentences) {
+      const t = s.trim()
+      if (!t) continue
+      if (t.length <= 200) { chunks.push(t); continue }
+      let buf = ''
+      for (const part of t.split(/(?<=,)\s+/)) {
+        if ((buf + ' ' + part).trim().length > 200) { if (buf) chunks.push(buf.trim()); buf = part }
+        else buf = (buf + ' ' + part).trim()
+      }
+      if (buf) chunks.push(buf.trim())
+    }
+    if (chunks.length === 0) return
+
     const voice = getJarvisVoice()
-    if (voice) utterance.voice = voice
-    utterance.pitch = 0.85
-    utterance.rate = 1.05
-    utterance.volume = 1
-    utterance.onstart = () => setSpeaking(true)
-    utterance.onend = () => setSpeaking(false)
-    utterance.onerror = () => setSpeaking(false)
-    window.speechSynthesis.speak(utterance)
+
+    // Chrome also pauses the whole queue at ~15s; nudging resume() keeps it alive.
+    const keepAlive = setInterval(() => {
+      if (window.speechSynthesis.speaking) window.speechSynthesis.resume()
+      else clearInterval(keepAlive)
+    }, 5000)
+
+    chunks.forEach((chunk, i) => {
+      const u = new SpeechSynthesisUtterance(chunk)
+      if (voice) u.voice = voice
+      u.pitch = 0.85
+      u.rate = 1.05
+      u.volume = 1
+      if (i === 0) u.onstart = () => setSpeaking(true)
+      if (i === chunks.length - 1) {
+        u.onend = () => { setSpeaking(false); clearInterval(keepAlive) }
+      }
+      u.onerror = () => { setSpeaking(false); clearInterval(keepAlive) }
+      window.speechSynthesis.speak(u)
+    })
   }
 
   function stopSpeaking() {
