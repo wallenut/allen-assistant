@@ -54,7 +54,7 @@ async function runPromote(adapter, rl, store, date, wikiDir) {
     collectFiles(wikiDir);
   } catch { /* wiki dir missing — empty list, proposePromotion handles gracefully */ }
 
-  const proposals = await proposePromotion(facts, { llm, store, wikiFiles });
+  const proposals = await proposePromotion(facts, { llm, store, wikiFiles, today: date });
   if (proposals.length === 0) {
     console.log('  No proposals generated.');
     return;
@@ -90,14 +90,21 @@ async function runPromote(adapter, rl, store, date, wikiDir) {
   const summary = await applyPromotion(approved, { store });
   console.log(`  Done:\n  ${summary.replace(/\n/g, '\n  ')}`);
 
-  // Archive: move buffer/{date}.json → buffer/reviewed/{date}.json
-  const srcPath = `buffer/${date}.json`;
-  const dstPath = `buffer/reviewed/${date}.json`;
-  const src = await store.read(srcPath);
-  if (src) {
-    await store.write(dstPath, { content: src.content, message: `buffer: reviewed ${date}` });
-    await store.remove(srcPath, { message: `buffer: archive ${date}` });
-    console.log(`  Buffer archived to ${dstPath}.`);
+  // Archiving is explicit — un-promoted facts stay live unless you choose to file them.
+  const archiveAns = await new Promise((resolve) =>
+    rl.question('  Archive today\'s buffer (shelves un-promoted facts too)? [y/N] ', (a) => resolve(a.trim()))
+  );
+  if (/^y/i.test(archiveAns)) {
+    const srcPath = `buffer/${date}.json`;
+    const dstPath = `buffer/reviewed/${date}.json`;
+    const src = await store.read(srcPath);
+    if (src) {
+      await store.write(dstPath, { content: src.content, message: `buffer: reviewed ${date}` });
+      await store.remove(srcPath, { message: `buffer: archive ${date}` });
+      console.log(`  Buffer archived to ${dstPath}.`);
+    }
+  } else {
+    console.log('  Buffer kept active — un-promoted facts remain for next review.');
   }
 }
 

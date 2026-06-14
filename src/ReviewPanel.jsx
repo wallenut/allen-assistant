@@ -117,7 +117,7 @@ export default function ReviewPanel({ onClose }) {
                 ))}
               </div>
               {allDecided && (
-                <button className="review-action-btn" onClick={applyDecisions}>Apply & Archive</button>
+                <button className="review-action-btn" onClick={applyDecisions}>Apply approved</button>
               )}
             </>
           )}
@@ -131,7 +131,7 @@ export default function ReviewPanel({ onClose }) {
 
           {phase === 'done' && (
             <div className="review-start">
-              <p>Wiki updated. Buffer archived to <code>buffer/reviewed/{today}.json</code>.</p>
+              <p>Wiki updated. Un-promoted facts stay in <code>buffer/{today}.json</code> for next review.</p>
               <button className="review-action-btn" onClick={onClose}>Done</button>
             </div>
           )}

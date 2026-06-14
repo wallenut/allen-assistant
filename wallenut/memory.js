@@ -9,7 +9,7 @@
 //   proposePromotion(facts, { llm, store, wikiFiles })        → proposals[]
 //   applyPromotion(approvedProposals, { store })              → string (summary)
 
-import { discoverDoors, selectContext } from '../src/wikiContext.js';
+import { discoverDoors } from '../src/wikiContext.js';
 
 // ── Extraction prompt (stenographer) ─────────────────────────────────────────
 // Adapted from src/buffer.js EXTRACTION_PROMPT; returns bare JSON, no markdown.
@@ -21,7 +21,7 @@ const EXTRACTION_PROMPT =
   'from the assistant\'s own knowledge. No markdown, no explanation, no code fences.';
 
 // ── Promotion prompt (librarian) ─────────────────────────────────────────────
-function promotionPrompt(facts, wikiContent) {
+function promotionPrompt(facts, wikiContent, today) {
   return (
     'You are a careful wiki librarian. Given the facts below and the current wiki content, ' +
     'produce a JSON array of surgical edit proposals. Each proposal must have:\n' +
@@ -29,12 +29,22 @@ function promotionPrompt(facts, wikiContent) {
     '"rationale": string, "addition": string }\n' +
     '"replace" uses "anchor" as a literal substring to locate and replace — be exact.\n' +
     '"append" adds "addition" to the end of the file.\n' +
-    '"create" writes a new file with "addition" as full content.\n' +
-    'Only propose changes that are clearly supported by the facts. ' +
+    '"create" writes a NEW file with "addition" as full content.\n\n' +
+    'Rules:\n' +
+    `- Today's date is ${today}. Use ${today} for any "Last updated" / date stamps. ` +
+    'NEVER use a date mentioned inside the facts for a stamp — those are dates the user talked ' +
+    'about, not today.\n' +
+    '- Consider EVERY domain, not just the most-mentioned one. The facts may span fitness, ' +
+    'research, life, projects, etc. — propose edits to each relevant file.\n' +
+    '- Open-world: if a cluster of facts is about a project/topic with NO existing file above, ' +
+    'propose op:"create" for a new file at projects/<kebab-name>/current_state.md with sensible ' +
+    'initial content. Do not force unrelated facts into an existing file.\n' +
+    '- Only propose changes clearly supported by the facts. Skip throwaway/duplicate facts, and ' +
+    'do NOT re-propose anything already present in the current wiki content.\n' +
     'Return ONLY the JSON array, no markdown, no explanation.\n\n' +
     '## Facts to integrate\n' +
     JSON.stringify(facts, null, 2) +
-    '\n\n## Current wiki content\n' +
+    '\n\n## Current wiki content (all front doors)\n' +
     wikiContent
   );
 }
@@ -167,25 +177,24 @@ export async function readBufferFacts(date, { store }) {
 
 /**
  * Librarian: propose wiki edits for a set of facts. No writes happen here.
- * Reuses discoverDoors/selectContext from src/wikiContext.js for routing.
+ * Unlike chat routing, promotion loads ALL front doors so multi-domain buffers
+ * get proposals across every relevant file (and can spawn new domain files).
  *
  * @param {Array} facts
- * @param {{ llm, store, wikiFiles: string[] }} opts
+ * @param {{ llm, store, wikiFiles: string[], today?: string }} opts
  *   wikiFiles: repo-relative paths of all wiki files (used for door discovery)
+ *   today: YYYY-MM-DD used for date stamps (defaults to today, UTC)
  * @returns {Promise<Array>} proposals[]
  */
-export async function proposePromotion(facts, { llm, store, wikiFiles = [] }) {
+export async function proposePromotion(facts, { llm, store, wikiFiles = [], today = todayUTC() }) {
   if (!facts || facts.length === 0) return [];
 
-  // Route facts to relevant doors using the existing router.
+  // Load ALL front doors (current_state.md + synthesis) — not a routed subset.
+  // The consolidation step must see every domain to place facts correctly.
   const doors = discoverDoors(wikiFiles);
-  // Use a combined query from fact contents to drive routing.
-  const query = facts.map((f) => f.content).join(' ');
-  const selected = selectContext(query, doors);
 
-  // Read selected wiki files (best-effort; skip missing).
   const blocks = [];
-  for (const relPath of selected) {
+  for (const relPath of doors) {
     const result = await store.read(relPath);
     if (result) {
       blocks.push(`## ${relPath}\n${result.content}`);
@@ -193,7 +202,7 @@ export async function proposePromotion(facts, { llm, store, wikiFiles = [] }) {
   }
   const wikiContent = blocks.join('\n\n') || '(no wiki content available)';
 
-  const prompt = promotionPrompt(facts, wikiContent);
+  const prompt = promotionPrompt(facts, wikiContent, today);
   const raw = await llm(prompt, 'Produce the proposals.');
   const cleaned = stripFences(raw);
 

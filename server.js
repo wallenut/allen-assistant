@@ -192,8 +192,9 @@ app.post('/api/promote/propose', async (req, res) => {
     const treeData = treeRes.ok ? await treeRes.json() : { tree: [] }
     const wikiFiles = (treeData.tree || []).filter(n => n.type === 'blob').map(n => n.path)
 
+    const today = new Date().toISOString().slice(0, 10)
     const llm = _makeLlm()
-    const proposals = await proposePromotion(facts, { llm, store: _memStore, wikiFiles })
+    const proposals = await proposePromotion(facts, { llm, store: _memStore, wikiFiles, today })
     res.json({ proposals })
   } catch (err) {
     console.error('POST /api/promote/propose error:', err.message)
@@ -201,26 +202,30 @@ app.post('/api/promote/propose', async (req, res) => {
   }
 })
 
-// POST /api/promote/apply — body: { approved, date? }
-// Applies approved proposals to wiki files, then archives buffer/{date}.json.
+// POST /api/promote/apply — body: { approved, date?, archive? }
+// Applies approved proposals to wiki files. Does NOT archive the buffer by
+// default — un-promoted facts stay live in buffer/{date}.json for re-review.
+// Pass archive:true to explicitly move the buffer to reviewed/ when done.
 // Returns: { summary }
 app.post('/api/promote/apply', async (req, res) => {
   if (!process.env.ANTHROPIC_API_KEY) {
     return res.status(503).json({ error: 'runtime not configured' })
   }
   try {
-    const { approved = [] } = req.body
+    const { approved = [], archive = false } = req.body
     const date = req.body?.date || new Date().toISOString().slice(0, 10)
 
     const summary = await applyPromotion(approved, { store: _memStore })
 
-    // Archive: move buffer/{date}.json → buffer/reviewed/{date}.json
-    const srcPath = `buffer/${date}.json`
-    const dstPath = `buffer/reviewed/${date}.json`
-    const src = await _memStore.read(srcPath)
-    if (src) {
-      await _memStore.write(dstPath, { content: src.content, message: `buffer: reviewed ${date}`, sha: undefined })
-      await _memStore.remove(srcPath, { message: `buffer: archive ${date}`, sha: src.sha })
+    // Archive only when explicitly requested — never silently shelve un-promoted facts.
+    if (archive) {
+      const srcPath = `buffer/${date}.json`
+      const dstPath = `buffer/reviewed/${date}.json`
+      const src = await _memStore.read(srcPath)
+      if (src) {
+        await _memStore.write(dstPath, { content: src.content, message: `buffer: reviewed ${date}`, sha: undefined })
+        await _memStore.remove(srcPath, { message: `buffer: archive ${date}`, sha: src.sha })
+      }
     }
 
     res.json({ summary })

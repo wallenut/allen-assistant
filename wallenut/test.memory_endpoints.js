@@ -70,7 +70,7 @@ async function handlePropose(body, { store, llm, apiKey }) {
     const date = body?.date || todayDate();
     const facts = await readBufferFacts(date, { store });
     const wikiFiles = ['fitness/current_state.md', 'allen_synthesis.md'];
-    const proposals = await proposePromotion(facts, { llm, store, wikiFiles });
+    const proposals = await proposePromotion(facts, { llm, store, wikiFiles, today: todayDate() });
     return { status: 200, json: { proposals } };
   } catch (err) {
     return { status: 500, json: { error: err.message } };
@@ -80,17 +80,19 @@ async function handlePropose(body, { store, llm, apiKey }) {
 async function handleApply(body, { store, apiKey }) {
   if (!apiKey) return { status: 503, json: { error: 'runtime not configured' } };
   try {
-    const { approved = [] } = body;
+    const { approved = [], archive = false } = body;
     const date = body?.date || todayDate();
     const summary = await applyPromotion(approved, { store });
 
-    // Archive buffer
-    const srcPath = `buffer/${date}.json`;
-    const dstPath = `buffer/reviewed/${date}.json`;
-    const src = await store.read(srcPath);
-    if (src) {
-      await store.write(dstPath, { content: src.content, message: `buffer: reviewed ${date}` });
-      await store.remove(srcPath);
+    // Archive only when explicitly requested — never silently shelve un-promoted facts.
+    if (archive) {
+      const srcPath = `buffer/${date}.json`;
+      const dstPath = `buffer/reviewed/${date}.json`;
+      const src = await store.read(srcPath);
+      if (src) {
+        await store.write(dstPath, { content: src.content, message: `buffer: reviewed ${date}` });
+        await store.remove(srcPath);
+      }
     }
 
     return { status: 200, json: { summary } };
@@ -222,7 +224,7 @@ await test('/api/promote/apply: applies approved proposals + returns summary', a
   assert.ok(after.content.includes('- lifts Tuesdays'), 'addition written to wiki file');
 });
 
-await test('/api/promote/apply: archives buffer/{date}.json after apply', async () => {
+await test('/api/promote/apply: does NOT archive by default (buffer stays live)', async () => {
   const store = makeStore();
   const date = '2026-06-14';
   await writeBufferFacts(GOOD_FACTS, { store, date });
@@ -233,11 +235,28 @@ await test('/api/promote/apply: archives buffer/{date}.json after apply', async 
   ];
   await handleApply({ approved, date }, { store, apiKey: 'test-key' });
 
-  // Source should be gone; destination should exist.
+  // Un-promoted facts must stay live: buffer remains, no reviewed copy.
   const src = await store.read(`buffer/${date}.json`);
   const dst = await store.read(`buffer/reviewed/${date}.json`);
-  assert.strictEqual(src, null, 'original buffer should be removed');
-  assert.ok(dst, 'reviewed copy should exist');
+  assert.ok(src, 'buffer should remain active by default');
+  assert.strictEqual(dst, null, 'no reviewed copy without archive flag');
+});
+
+await test('/api/promote/apply: archives only when archive:true', async () => {
+  const store = makeStore();
+  const date = '2026-06-14';
+  await writeBufferFacts(GOOD_FACTS, { store, date });
+  await store.write('fitness/current_state.md', { content: '# Fitness\n' });
+
+  const approved = [
+    { file: 'fitness/current_state.md', op: 'append', addition: '- new fact', rationale: 'r' },
+  ];
+  await handleApply({ approved, date, archive: true }, { store, apiKey: 'test-key' });
+
+  const src = await store.read(`buffer/${date}.json`);
+  const dst = await store.read(`buffer/reviewed/${date}.json`);
+  assert.strictEqual(src, null, 'original buffer should be removed when archive:true');
+  assert.ok(dst, 'reviewed copy should exist when archive:true');
 });
 
 await test('/api/promote/apply: empty approved is a no-op (no wiki writes)', async () => {
