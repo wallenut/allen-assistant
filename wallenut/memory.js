@@ -234,50 +234,66 @@ export async function applyPromotion(approvedProposals, { store }) {
 
   const lines = [];
 
+  // Each proposal is isolated: one bad anchor must not abort the whole batch.
+  // A failed proposal is recorded in the summary and the rest still apply.
   for (const proposal of approvedProposals) {
-    const { file, op, anchor, addition, rationale } = proposal;
-
-    if (op === 'create') {
-      await store.write(file, {
-        content: addition,
-        message: `memory: create ${file}`,
-      });
-      lines.push(`created ${file}: ${rationale}`);
-      continue;
+    try {
+      lines.push(await applyOne(proposal, store));
+    } catch (err) {
+      lines.push(`FAILED ${proposal?.file ?? '(no file)'}: ${err.message}`);
     }
-
-    // append or replace — need to read the existing file first.
-    const existing = await store.read(file);
-    const current = existing?.content ?? '';
-
-    if (op === 'append') {
-      const updated = current.replace(/\s*$/, '') + '\n\n' + addition.trim() + '\n';
-      await store.write(file, {
-        content: updated,
-        message: `memory: append to ${file}`,
-        sha: existing?.sha,
-      });
-      lines.push(`appended to ${file}: ${rationale}`);
-      continue;
-    }
-
-    if (op === 'replace') {
-      if (!anchor) throw new Error(`applyPromotion: replace op on ${file} missing anchor`);
-      if (!current.includes(anchor)) {
-        throw new Error(`applyPromotion: anchor not found in ${file} — "${anchor}"`);
-      }
-      const updated = current.replace(anchor, addition);
-      await store.write(file, {
-        content: updated,
-        message: `memory: replace in ${file}`,
-        sha: existing?.sha,
-      });
-      lines.push(`replaced in ${file}: ${rationale}`);
-      continue;
-    }
-
-    lines.push(`skipped unknown op "${op}" for ${file}`);
   }
 
   return lines.join('\n');
+}
+
+// Locate an anchor in `current`, tolerating whitespace drift. LLM-proposed
+// anchors rarely reproduce the file's exact bytes, so: exact match first, then
+// a whitespace-flexible regex. Returns the actual matched substring, or null.
+function locateAnchor(current, anchor) {
+  if (current.includes(anchor)) return anchor;
+  // Collapse runs of whitespace in the anchor to \s+ so newlines/indentation/
+  // double-spaces in the file still match. Escape all other regex specials.
+  const pattern = anchor
+    .trim()
+    .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    .replace(/\s+/g, '\\s+');
+  const m = current.match(new RegExp(pattern));
+  return m ? m[0] : null;
+}
+
+async function applyOne(proposal, store) {
+  const { file, op, anchor, addition, rationale } = proposal;
+
+  if (op === 'create') {
+    await store.write(file, { content: addition, message: `memory: create ${file}` });
+    return `created ${file}: ${rationale}`;
+  }
+
+  // append or replace — need to read the existing file first.
+  const existing = await store.read(file);
+  const current = existing?.content ?? '';
+
+  if (op === 'append') {
+    const updated = current.replace(/\s*$/, '') + '\n\n' + addition.trim() + '\n';
+    await store.write(file, { content: updated, message: `memory: append to ${file}`, sha: existing?.sha });
+    return `appended to ${file}: ${rationale}`;
+  }
+
+  if (op === 'replace') {
+    if (!anchor) throw new Error(`replace op missing anchor`);
+    const matched = locateAnchor(current, anchor);
+    if (matched) {
+      const updated = current.replace(matched, addition);
+      await store.write(file, { content: updated, message: `memory: replace in ${file}`, sha: existing?.sha });
+      return `replaced in ${file}: ${rationale}`;
+    }
+    // Anchor genuinely absent (LLM composed/paraphrased it). Don't lose the
+    // update — append it instead and flag so the user can reconcile manually.
+    const updated = current.replace(/\s*$/, '') + '\n\n' + addition.trim() + '\n';
+    await store.write(file, { content: updated, message: `memory: append (anchor missing) to ${file}`, sha: existing?.sha });
+    return `appended to ${file} (replace anchor not found — placed at end, review): ${rationale}`;
+  }
+
+  return `skipped unknown op "${op}" for ${file}`;
 }

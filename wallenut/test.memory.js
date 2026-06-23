@@ -271,7 +271,7 @@ await test('applyPromotion: create op writes new file', async () => {
   assert.ok(file.content.includes('first fact'), 'content written');
 });
 
-await test('applyPromotion: replace with missing anchor throws clear error', async () => {
+await test('applyPromotion: replace with missing anchor falls back to append (does not throw, does not lose the update)', async () => {
   const store = makeStore();
   await store.write('life/current_state.md', { content: '# Life\n\nSome content\n' });
 
@@ -280,14 +280,50 @@ await test('applyPromotion: replace with missing anchor throws clear error', asy
       file: 'life/current_state.md',
       op: 'replace',
       anchor: 'ANCHOR THAT DOES NOT EXIST',
-      addition: 'replacement',
+      addition: 'replacement text',
       rationale: 'test',
     },
   ];
-  await assert.rejects(
-    () => applyPromotion(proposals, { store }),
-    /anchor not found|not found/i
-  );
+  const summary = await applyPromotion(proposals, { store });
+  const after = await store.read('life/current_state.md');
+  assert.ok(after.content.includes('replacement text'), 'update should still land via append fallback');
+  assert.ok(after.content.includes('Some content'), 'original content preserved');
+  assert.match(summary, /anchor not found|review/i, 'summary should flag the fallback for manual review');
+});
+
+await test('applyPromotion: replace tolerates whitespace drift in the anchor', async () => {
+  const store = makeStore();
+  await store.write('fitness/current_state.md', { content: '# Fitness\n\n- Aerobic   this week:   sprints owed\n' });
+
+  const proposals = [
+    {
+      file: 'fitness/current_state.md',
+      op: 'replace',
+      anchor: '- Aerobic this week: sprints owed', // single-spaced; file has runs of spaces
+      addition: '- Aerobic this week: interval run completed',
+      rationale: 'test whitespace-flexible match',
+    },
+  ];
+  await applyPromotion(proposals, { store });
+  const after = await store.read('fitness/current_state.md');
+  assert.ok(after.content.includes('interval run completed'), 'flexible match should replace despite whitespace drift');
+  assert.ok(!after.content.includes('sprints owed'), 'old text replaced, not appended');
+});
+
+await test('applyPromotion: one failing proposal does not abort the batch', async () => {
+  const store = makeStore();
+  await store.write('life/current_state.md', { content: '# Life\n\ncontent\n' });
+
+  const proposals = [
+    { file: 'life/current_state.md', op: 'append', addition: '- good append', rationale: 'valid' },
+    { file: 'life/current_state.md', op: 'replace', anchor: undefined, addition: 'x', rationale: 'bad — no anchor' },
+    { file: 'life/current_state.md', op: 'append', addition: '- second good append', rationale: 'valid' },
+  ];
+  const summary = await applyPromotion(proposals, { store });
+  const after = await store.read('life/current_state.md');
+  assert.ok(after.content.includes('- good append'), 'first valid proposal applied');
+  assert.ok(after.content.includes('- second good append'), 'proposal after the failing one still applied');
+  assert.match(summary, /FAILED/, 'summary records the failed proposal');
 });
 
 await test('applyPromotion: append op ensures clean line separator (no jammed lines)', async () => {
